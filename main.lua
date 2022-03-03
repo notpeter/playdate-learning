@@ -15,6 +15,8 @@ local otherdinos = {}
 local dino_count = 0
 
 function myGameSetUp()
+    math.randomseed(playdate.getSecondsSinceEpoch())
+
     local dino = gfx.image.new("images/dino.png")
     assert( dino ) -- make sure the image was where we thought
 
@@ -60,14 +62,17 @@ function playdate.update()
 
     -- buttonJustPressed / buttonJustReleased
     if playdate.buttonJustReleased( playdate.kButtonA ) then
-        dino_count = dino_count + 1
-        new_dino = otherdinos[dino_count]
-        new_dino:moveTo(dino_count * 100,100)
-        new_dino:add()
+        if dino_count < 10 then
+            otherdinos[dino_count]:moveTo(math.random(16, 384), math.random(16, 224))
+            otherdinos[dino_count]:add()
+            dino_count = dino_count + 1
+        end
     end
     if playdate.buttonJustReleased( playdate.kButtonB ) then
-        dino_count = dino_count - 1
-        new_dino:remove()
+        if dino_count > 0 then
+            otherdinos[dino_count]:remove()
+            dino_count = dino_count - 1
+        end
     end
 
     -- Call the functions below in playdate.update() to draw sprites and keep
