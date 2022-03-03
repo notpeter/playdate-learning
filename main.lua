@@ -57,7 +57,7 @@ function playdate.update()
     if playdate.buttonIsPressed( playdate.kButtonLeft ) then
         playerSprite:moveBy( -2, 0 )
     end
---[[
+
     -- buttonJustPressed / buttonJustReleased
     if playdate.buttonJustReleased( playdate.kButtonA ) then
         dino_count = dino_count + 1
@@ -69,7 +69,7 @@ function playdate.update()
         dino_count = dino_count - 1
         new_dino:remove()
     end
-]]--
+
     -- Call the functions below in playdate.update() to draw sprites and keep
     -- timers updated. (We aren't using timers in this example, but in most
     -- average-complexity games, you will.)
