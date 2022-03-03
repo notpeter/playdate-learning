@@ -11,14 +11,21 @@ local gfx <const> = playdate.graphics
 
 -- Here's our player sprite declaration. File scope local.
 local playerSprite = nil
+local otherdinos = {}
+local dino_count = 0
 
 function myGameSetUp()
-    local playerImage = gfx.image.new("images/dino.png")
-    assert( playerImage ) -- make sure the image was where we thought
+    local dino = gfx.image.new("images/dino.png")
+    assert( dino ) -- make sure the image was where we thought
 
-    playerSprite = gfx.sprite.new( playerImage )
+    playerSprite = gfx.sprite.new( dino )
     playerSprite:moveTo( 200, 120 ) -- center of sprite; (200,120) is the center of the Playdate screen (400x240)
     playerSprite:add() -- This is critical!
+  
+    for i = 0,10,1
+    do
+        otherdinos[i] = gfx.sprite.new(dino)
+    end
 
     local backgroundImage = gfx.image.new( "images/hitwitch.png" )
     assert( backgroundImage )
@@ -50,14 +57,24 @@ function playdate.update()
     if playdate.buttonIsPressed( playdate.kButtonLeft ) then
         playerSprite:moveBy( -2, 0 )
     end
-
-    if playdate.buttonIsPressed( playdate.kButtonA ) then
-        playerSprite:moveTo( 200, 120)
+--[[
+    -- buttonJustPressed / buttonJustReleased
+    if playdate.buttonJustReleased( playdate.kButtonA ) then
+        dino_count = dino_count + 1
+        new_dino = otherdinos[dino_count]
+        new_dino:moveTo(dino_count * 100,100)
+        new_dino:add()
     end
+    if playdate.buttonJustReleased( playdate.kButtonB ) then
+        dino_count = dino_count - 1
+        new_dino:remove()
+    end
+]]--
     -- Call the functions below in playdate.update() to draw sprites and keep
     -- timers updated. (We aren't using timers in this example, but in most
     -- average-complexity games, you will.)
 
+    -- playdate.graphics.sprite.update
     gfx.sprite.update()
     playdate.timer.updateTimers()
 
