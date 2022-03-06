@@ -4,7 +4,7 @@ import "CoreLibs/graphics"
 import "CoreLibs/sprites"
 import "CoreLibs/timer"
 
---This is more performant that 
+--This is more performant and shorter.
 --local gfx <const> = playdate.graphics
 local dvdSprite = nil
 local mode = 1
@@ -28,7 +28,7 @@ function myGameSetUp()
         bottom = screenY - dvdSprite.height /  2,
         top = dvdSprite.height / 2,
     }
-  
+
     local backgroundImage = playdate.graphics.image.new( "images/400x240-black.png" )
     assert( backgroundImage, "image load failure")
     playdate.graphics.sprite.setBackgroundDrawingCallback(
@@ -43,16 +43,16 @@ end
 function playdate.update()
     d = dvdSprite
     if (
-        playdate.buttonIsPressed( playdate.kButtonUp ) 
-        or playdate.buttonIsPressed( playdate.kButtonRight ) 
-        or playdate.buttonIsPressed( playdate.kButtonDown ) 
+        playdate.buttonIsPressed( playdate.kButtonUp )
+        or playdate.buttonIsPressed( playdate.kButtonRight )
+        or playdate.buttonIsPressed( playdate.kButtonDown )
         or playdate.buttonIsPressed( playdate.kButtonLeft )
     ) then
         mode = 0
     elseif playdate.buttonJustReleased( playdate.kButtonA ) then
         mode = ~mode -- bitwise not
     end
-    
+
     if playdate.buttonIsPressed( playdate.kButtonUp ) then
         d:moveBy( 0, -2 )
     end
@@ -79,7 +79,7 @@ function playdate.update()
     end
     if playdate.buttonJustReleased( playdate.kButtonB ) then
         d:moveTo(
-            math.random( d.box.left, d.box.right ), 
+            math.random( d.box.left, d.box.right ),
             math.random( d.box.top, d.box.bottom )
         )
         -- Set x/y velocity to -2 or 2
