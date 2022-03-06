@@ -75,5 +75,4 @@ function playdate.update()
     playdate.timer.updateTimers()
 end
 
-
 myGameSetUp()
