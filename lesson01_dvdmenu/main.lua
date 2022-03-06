@@ -7,7 +7,6 @@ import "CoreLibs/timer"
 --This is more performant and shorter.
 --local gfx <const> = playdate.graphics
 local dvdSprite = nil
-local mode = 1
 local screenX = 400
 local screenY = 240
 
@@ -40,33 +39,27 @@ function myGameSetUp()
     )
 end
 
+local function b2i(value) -- converts boolean to int
+    return value == true and 1 or value == false and 0
+end
+
 function playdate.update()
     d = dvdSprite
-    if (
-        playdate.buttonIsPressed( playdate.kButtonUp )
-        or playdate.buttonIsPressed( playdate.kButtonRight )
-        or playdate.buttonIsPressed( playdate.kButtonDown )
-        or playdate.buttonIsPressed( playdate.kButtonLeft )
-    ) then
-        mode = 0
-    elseif playdate.buttonJustReleased( playdate.kButtonA ) then
-        mode = ~mode -- bitwise not
-    end
-
-    if playdate.buttonIsPressed( playdate.kButtonUp ) then
-        d:moveBy( 0, -2 )
-    end
-    if playdate.buttonIsPressed( playdate.kButtonRight ) then
-        d:moveBy( 2, 0 )
-    end
-    if playdate.buttonIsPressed( playdate.kButtonDown ) then
-        d:moveBy( 0, 2 )
-    end
-    if playdate.buttonIsPressed( playdate.kButtonLeft ) then
-        d:moveBy( -2, 0 )
-    end
-
-    if (mode == 1) then
+    bip = playdate.buttonIsPressed
+    if bip("up") or bip("right") or bip("left") or bip("down") then
+        d:moveBy(
+            2 * (b2i(bip("right")) - b2i(bip("left"))),
+            2 * (b2i(bip("down")) - b2i(bip("up")))
+        )
+    elseif playdate.buttonJustReleased( "A" ) then
+        d:moveTo(
+            math.random( d.box.left, d.box.right ),
+            math.random( d.box.top, d.box.bottom )
+        )
+        -- Set x/y velocity to -2 or 2
+        d.dx = math.random(0, 1) * 4 - 2
+        d.dy = math.random(0, 1) * 4 - 2
+    else
         d:moveBy( d.dx, d.dy )
         if d.x > d.box.right or d.x < d.box.left then
             d.dx = d.dx * -1
@@ -76,15 +69,6 @@ function playdate.update()
             d.dy = d.dy * -1
             d:moveBy( 0, d.dy)
         end
-    end
-    if playdate.buttonJustReleased( playdate.kButtonB ) then
-        d:moveTo(
-            math.random( d.box.left, d.box.right ),
-            math.random( d.box.top, d.box.bottom )
-        )
-        -- Set x/y velocity to -2 or 2
-        d.dx = math.random(0, 1) * 4 - 2
-        d.dy = math.random(0, 1) * 4 - 2
     end
 
     playdate.graphics.sprite.update()
