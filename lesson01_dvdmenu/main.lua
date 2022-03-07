@@ -22,7 +22,7 @@ function myGameSetUp()
     dvd:moveTo( screenX / 2, screenY / 2 ) -- center to center of Playdate screens
     dvd:add()
     -- Let's attach some state
-    dvd.dx, dvd.dy = 2, 2
+    dvd.dx, dvd.dy = 1, 1
     dvd.box = {
         left = dvd.width /  2,
         right = screenX - dvd.width /  2,
@@ -51,6 +51,7 @@ end
 function playdate.update()
     local d = logo
     local bip = playdate.buttonIsPressed
+    local speed = 2
 
     -- A Button: random position and direction
     if playdate.buttonJustReleased( "a" ) then
@@ -63,21 +64,35 @@ function playdate.update()
         d.dy = math.random(0, 1) * 2 - 1
     end
 
+    -- This is a terrible crank interface.
+    if not playdate.isCrankDocked() then
+        change, _ = playdate.getCrankChange()
+        if change > 0 then
+            speed = math.abs(speed)
+        elseif change < 0 then
+            speed = -1 * math.abs(speed)
+        else -- crank undocked and not moving
+            speed = 0
+        end
+    elseif playdate.buttonIsPressed("b") then -- Move backwards
+        speed = -1 * math.abs(speed)
+    end
+
     -- d-pad control
     if bip("up") or bip("right") or bip("left") or bip("down") then
         d:moveBy(
-            2 * (b2i(bip("right")) - b2i(bip("left"))),
-            2 * (b2i(bip("down")) - b2i(bip("up")))
+            speed * (b2i(bip("right")) - b2i(bip("left"))),
+            speed * (b2i(bip("down")) - b2i(bip("up")))
         )
     else
-        d:moveBy( d.dx, d.dy )
+        d:moveBy( speed * d.dx, speed * d.dy )
         if d.x > d.box.right or d.x < d.box.left then
             d.dx = d.dx * -1
-            d:moveBy( 2 * d.dx, 0)
+            d:moveBy( speed * d.dx, 0)
         end
         if d.y > d.box.bottom or d.y < d.box.top then
             d.dy = d.dy * -1
-            d:moveBy( 0, 2 * d.dy)
+            d:moveBy( 0, speed * d.dy)
         end
     end
 
