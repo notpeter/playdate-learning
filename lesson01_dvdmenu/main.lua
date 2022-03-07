@@ -3,17 +3,17 @@ import "CoreLibs/object"
 import "CoreLibs/graphics"
 import "CoreLibs/sprites"
 import "CoreLibs/timer"
-
---This is more performant and shorter.
---local gfx <const> = playdate.graphics
+-- Import Aliases (More performant and shorter)
+local gfx <const> = playdate.graphics
+local bip <const> = playdate.buttonIsPressed
 
 -- Global state
-logo = nil -- playdate.graphics.sprite
+local logo = nil -- playdate.graphics.sprite
 -- Random constants
 local screenX <const> = 400
 local screenY <const> = 240
 
-function myGameSetUp()
+local function myGameSetUp()
     math.randomseed(playdate.getSecondsSinceEpoch())
 
     local dvdImage = playdate.graphics.image.new( "images/dvd-64-white.png" )
@@ -50,7 +50,6 @@ end
 
 function playdate.update()
     local d = logo
-    local bip = playdate.buttonIsPressed
     local speed = 2
 
     -- A Button: random position and direction
@@ -64,7 +63,7 @@ function playdate.update()
         d.dy = math.random(0, 1) * 2 - 1
     end
 
-    -- This is a terrible crank interface.
+    -- This is a terrible, but simple crank interface.
     if not playdate.isCrankDocked() then
         change, _ = playdate.getCrankChange()
         if change > 0 then
@@ -74,7 +73,8 @@ function playdate.update()
         else -- crank undocked and not moving
             speed = 0
         end
-    elseif playdate.buttonIsPressed("b") then -- Move backwards
+    -- B Button: reverse direction
+    elseif playdate.buttonIsPressed("b") then
         speed = -1 * math.abs(speed)
     end
 
