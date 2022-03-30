@@ -237,33 +237,19 @@ function playdate.update()
     playdate.timer.updateTimers()
 
     if selectedPos == nil then
-        local adjust = 0
-        local fx, fy = pos2(frame_pos)
-        -- d-pad control
+        local fx, fy = pos2(frame_pos) -- frame x,y board coordinates
+        -- d-pad control. b2i terms apply screen wrap if required.
         if bjp("right") then
-            if fx == boardX then
-                adjust = -boardX
-            end
-            frame_pos = frame_pos + 1 + adjust
+            frame_pos = frame_pos + 1 + (b2i(fx == boardX) * -boardX)
         elseif bjp("left") then
-            if fx == 1 then
-                adjust = boardX
-            end
-            frame_pos = frame_pos - 1 + adjust
+            frame_pos = frame_pos - 1 + (b2i(fx == 1) * boardX)
         elseif bjp("up") then
-            if fy == 1 then
-                adjust = boardX * boardY
-            end
-            frame_pos = frame_pos - boardX + adjust
+            frame_pos = frame_pos - boardX + (b2i(fy == 1) * boardX * boardY)
         elseif bjp("down") then
-            if fy == boardY then
-                frame_pos = fx
-            else
-                frame_pos = frame_pos + boardX
-            end
+            frame_pos = frame_pos + boardX - (b2i(fy == boardY) * boardX * boardY)
         end
         fx, fy = pos2(frame_pos)
-        frameSprite:moveTo( -tileSize // 2 + tileSize * fx, -tileSize // 2 + tileSize * fy)
+        frameSprite:moveTo( tilePos(pos2(frame_pos)) )
     else
 
         -- if bip("right") then
