@@ -205,15 +205,6 @@ local function myGameSetUp()
     frameSprite:moveTo( tilePos(1, 1) )
     frameSprite:add()
 
-    local function blinkCallback()
-        if not(selectedPos == nil) then
-            print("blink", dump(validMoves))
-            for dest_pos, new_dest in pairs(validMoves) do
-                blinkSprites[dest_pos]:setVisible(not(blinkSprites[dest_pos]:isVisible()))
-            end
-        end
-    end
-    blinkTimer = playdate.timer.keyRepeatTimerWithDelay(500, 500, blinkCallback)
 
     -- -- Background image.
     -- local backgroundImage = playdate.graphics.image.new( "images/400x240-black.png" )
@@ -238,6 +229,8 @@ function playdate.update()
 
     if selectedPos == nil then
         local fx, fy = pos2(frame_pos) -- frame x,y board coordinates
+
+        -- TODO: Convert this to buttonIsPressed with delay + repeat
         -- d-pad control. b2i terms apply screen wrap if required.
         if bjp("right") then
             frame_pos = frame_pos + 1 + (b2i(fx == boardX) * -boardX)
@@ -248,7 +241,6 @@ function playdate.update()
         elseif bjp("down") then
             frame_pos = frame_pos + boardX - (b2i(fy == boardY) * boardX * boardY)
         end
-        fx, fy = pos2(frame_pos)
         frameSprite:moveTo( tilePos(pos2(frame_pos)) )
     else
 
@@ -263,6 +255,14 @@ function playdate.update()
         -- end
     end
 
+    local function blinkCallback()
+        if not(selectedPos == nil) then
+            for dest_pos, new_dest in pairs(validMoves) do
+                blinkSprites[dest_pos]:setVisible(not(blinkSprites[dest_pos]:isVisible()))
+            end
+        end
+    end
+
     -- ButtonA / Frame selection
     if playdate.buttonJustReleased( "a" ) then
         if selectedPos == nil then -- new selection
@@ -272,13 +272,15 @@ function playdate.update()
             for dest_pos, new_dest in pairs(validMoves) do
                 blinkSprites[dest_pos]:setVisible(true)
             end
+            blinkTimer = playdate.timer.keyRepeatTimerWithDelay(0, 500, blinkCallback)
         else -- clearing selection
             selectedPos = nil
             frameSprite:setImage(images.frame)
-            validMoves = {}
             for dest_pos, new_dest in pairs(validMoves) do
                 blinkSprites[dest_pos]:setVisible(false)
             end
+            validMoves = {}
+            blinkTimer:remove()
         end
     end
 end
