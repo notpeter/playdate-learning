@@ -17,6 +17,7 @@ local fPos = 1
 local frameSprite = nil -- playdate.graphics.sprite
 local frameSelected = 0
 local selectedPos = nil
+local validMoves = {}
 -- Random constants
 local boards = {
     [1] = {x=14, y=10, size=24},
@@ -35,6 +36,20 @@ local tileSize = board.size
 
 local screenX <const> = 400
 local screenY <const> = 240
+
+local function tile2str(tile)
+    local k =  {
+        [0]="     ",
+        [1]="(   )",
+        [2]="  +  ",
+        [3]="( + )",
+        [4]=" [ ] ",
+        [5]="([ ])",
+        [6]=" [+] ",
+        [7]="([+])"
+    }
+    return k[tile]
+end
 
 local function dump(o)
     if type(o) == 'table' then
@@ -65,90 +80,30 @@ local function imagesLoad()
     return _images
 end
 
-local function _isPrimary(tile)
-    if tile == 1 then
-        return true
-    elseif tile == 2 then
-        return true
-    elseif tile == 4 then
-        return true
-    else
-        return false
-    end
-end
-
-local function _isSecondary(tile)
-    if tile == 3 then
-        return true
-    elseif tile == 5 then
-        return true
-    elseif tile == 6 then
-        return true
-    else
-        return false
-    end
-end
-
-local function _isTertiary(tile)
-    if tile == 7 then
-        return true
-    else
-        return false
-    end
-end
-
-local function _hasCross(tile)
-    if (tile & 4 > 0) then
-        return true
-    end
-    return false
-end
-local function _hasCircle(tile)
-    if tile == 1 or tile == 3 or tile == 5 or tile == 7 then
-        return true
-    end
-    return false
-end
-local function _hasSquare(tile)
-    if tile == 2 or tile == 3 or tile == 6 or tile == 7 then
-        return true
-    end
-    return false
-end
+local function _isPrimary(tile); return tile == 1 or tile == 2 or tile == 4; end
+local function _isSecondary(tile); return tile == 3 or tile == 5 or tile == 6; end
+local function _isTertiary(tile); return tile == 7; end
+local function _hasCircle(tile); return tile & 1 > 0; end
+local function _hasCross(tile); return tile & 2 > 0; end
+local function _hasSquare(tile); return tile & 4 > 0; end
 
 local function _contains(tile1, tile2)
     -- true when tile1 contains 2
     return (tile1 & tile2 == tile2)
 end
 
-local function _tileAdd(tile1, tile2)
-    if tile1 == tile2 then
-        return tile1
-    elseif (tile1 | tile2) == (tile1 + tile2) then
-        return tile1 | tile2
-    end
-    return 0
-end
-
 local function move(src, mid, dest)
-    local valid = false
-    local mid_ok = false
-    local dest_ok = false
-
-    if (_isPrimary(src) and _isPrimary(mid)) then
-        new_mid = 0
-    elseif (_contains(mid, src)) then
-        new_mid = mid - src
-    else
-        return false, -1, -1
+    -- returns (valid:bool, new_mid:int, new_dest:int)
+    -- Check if dest tile is suitable
+    if dest == 0 or src == dest or (src | dest == src + dest) then
+        -- Check whether mid tile is suitable.
+        if _isPrimary(src) and _isPrimary(mid) then
+            return true, 0, src | dest
+        elseif _contains(mid, src) then
+            return true, mid - src, src | dest
+        end
     end
-
-    if not(_contains(dest, src)) or dest == 0 then
-        new_dest = src + dest
-    else
-        return false, -1, -1
-    end
-    return true, new_mid, new_dest
+    return false, nil, nil
 end
 
 local function pos2(position)
@@ -156,6 +111,13 @@ local function pos2(position)
     local posY = (position - 1) // boardX + 1
     return posX, posY
 end
+
+local function _mid_pos(src_pos, dest_pos)
+    local x1, y1 = pos2(src_pos)
+    local x2, y2 = pos2(dest_pos)
+    return (x1 + x2 // 2), (y1 + y2 // 2)
+end
+
 
 local function _valid_moves(position)
     moves = {}
@@ -188,9 +150,20 @@ local function _valid_moves(position)
     if ok_down and ok_right then
         table.insert(moves, position + 2 * boardX + 2)
     end
-    return moves
+    local valids = {}
+    local new_dest = null
+    local new_mid = null
+    local mid_pos = null
+    local valid = false
+    for _, dest_pos in pairs(moves) do
+        mid_pos = _mid_pos(position, dest_pos)
+        valid, new_mid, new_dest = move(game[position], game[mid_pos], game[dest_pos])
+        if valid then
+            valids[dest_pos] = new_dest
+        end
+    end
+    return valids
 end
-
 
 local function myGameSetUp()
     images = imagesLoad()
@@ -261,6 +234,7 @@ function playdate.update()
         fx, fy = pos2(fPos)
         frameSprite:moveTo( -tileSize // 2 + tileSize * fx, -tileSize // 2 + tileSize * fy)
     else
+
         -- if bip("right") then
         --     print(fPos, fPos + 2, game[fPos], game[fPos +2])
         -- elseif bip("left") then
@@ -278,10 +252,12 @@ function playdate.update()
         if frameSelected == 1 then
             frameSelected = 0
             frameSprite:setImage(images.frame)
+            validMoves = {}
         else
             frameSelected = 1
             frameSprite:setImage(images.frame_selected)
-            print(fPos, dump(_valid_moves(fPos)))
+            validMoves = _valid_moves(fPos)
+            print(fPos, dump(validMoves))
         end
     end
 end
