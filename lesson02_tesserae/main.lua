@@ -23,6 +23,12 @@ local boards = {
     [2] = {x=10, y=7, size=32},
 }
 local board = boards[2]
+local difficulty = {
+    -- TODO: Make less difficult. E.g. medium 2/3 primary; 1/3 secondary not 1/2 & 1/2.
+    easy = function(); return 2 ^ math.random(0,2); end,    -- all primary
+    medium = function(); return math.random(1,6); end,      -- primary & secondary
+    hard = function(); return math.random(1,7); end,        -- primary, secondary & tertiary
+}
 local boardX = board.x
 local boardY = board.y
 local tileSize = board.size
@@ -194,8 +200,7 @@ local function myGameSetUp()
     while (p < (boardX * boardY))
     do
         p = p + 1
-        -- game[p] = 2 ^ math.random(0,2)
-        game[p] = math.random(1,7)
+        game[p] = difficulty.medium()
         local x, y = pos2(p)
         tileSprites[p] = playdate.graphics.sprite.new( images[game[p]] )
         tileSprites[p]:moveTo( -tileSize // 2 + tileSize * x, -tileSize // 2 + tileSize * y)
