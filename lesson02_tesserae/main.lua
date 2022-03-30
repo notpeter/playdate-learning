@@ -11,13 +11,17 @@ local bip <const> = playdate.buttonIsPressed
 
 -- Global state
 local images = {} -- table of playdate.graphics.images
-local tileSprites = {}
-local game = {}
-local fPos = 1
+local tileSprites = {}  -- table of playdate.graphics.sprite
+local blinkSprites = {} -- table of playdate.graphics.sprite
 local frameSprite = nil -- playdate.graphics.sprite
-local frameSelected = 0
+
+local game = {}
+local frame_pos = 1
 local selectedPos = nil
 local validMoves = {}
+
+local blinkTimer = nil
+
 -- Random constants
 local boards = {
     [1] = {x=14, y=10, size=24},
@@ -72,6 +76,8 @@ local function imagesLoad()
         [4]="4.png", [5]="5.png", [6]="6.png", [7]="7.png",
         frame="frame.png",
         frame_selected="frame-selected.png",
+        dot="dot.png",
+        box="box.png",
     }) do
         filename = string.format("images/%sx%s/%s", tileSize, tileSize, val)
         _images[key] = playdate.graphics.image.new( filename )
@@ -106,18 +112,24 @@ local function move(src, mid, dest)
     return false, nil, nil
 end
 
+local function tilePos(x, y)
+    -- Takes x,y board coordinates; returns xy screen coordinates (sprite location)
+    return -tileSize // 2 + tileSize * x, -tileSize // 2 + tileSize * y
+end
+
 local function pos2(position)
+    -- Takes int position and returns x,y board coordinates.
     local posX = (position - 1) % boardX + 1
     local posY = (position - 1) // boardX + 1
     return posX, posY
 end
 
 local function _mid_pos(src_pos, dest_pos)
+    -- returns the midpoint between two tiles (does no validation)
     local x1, y1 = pos2(src_pos)
     local x2, y2 = pos2(dest_pos)
     return (x1 + x2 // 2), (y1 + y2 // 2)
 end
-
 
 local function _valid_moves(position)
     moves = {}
@@ -173,16 +185,35 @@ local function myGameSetUp()
     while (p < (boardX * boardY))
     do
         p = p + 1
-        game[p] = difficulty.medium()
-        local x, y = pos2(p)
-        tileSprites[p] = playdate.graphics.sprite.new( images[game[p]] )
-        tileSprites[p]:moveTo( -tileSize // 2 + tileSize * x, -tileSize // 2 + tileSize * y)
-        tileSprites[p]:add()
+        game[p] = difficulty.easy()
+
+        local x, y = tilePos(pos2(p)) -- Sprite coordinates
+
+        local tileSprite = playdate.graphics.sprite.new( images[game[p]] )
+        tileSprite:moveTo(x, y)
+        tileSprite:add()
+        tileSprites[p] = tileSprite
+
+        local blinkSprite = playdate.graphics.sprite.new( images.dot )
+        blinkSprite:moveTo(x, y)
+        blinkSprite:setVisible(false)
+        blinkSprite:add()
+        blinkSprites[p] = blinkSprite
     end
 
     frameSprite = playdate.graphics.sprite.new( images.frame )
-    frameSprite:moveTo( tileSize, tileSize)
+    frameSprite:moveTo( tilePos(1, 1) )
     frameSprite:add()
+
+    local function blinkCallback()
+        if not(selectedPos == nil) then
+            print("blink", dump(validMoves))
+            for dest_pos, new_dest in pairs(validMoves) do
+                blinkSprites[dest_pos]:setVisible(not(blinkSprites[dest_pos]:isVisible()))
+            end
+        end
+    end
+    blinkTimer = playdate.timer.keyRepeatTimerWithDelay(500, 500, blinkCallback)
 
     -- -- Background image.
     -- local backgroundImage = playdate.graphics.image.new( "images/400x240-black.png" )
@@ -205,59 +236,63 @@ function playdate.update()
     playdate.graphics.sprite.update()
     playdate.timer.updateTimers()
 
-    if frameSelected == 0 then
+    if selectedPos == nil then
         local adjust = 0
-        local fx, fy = pos2(fPos)
+        local fx, fy = pos2(frame_pos)
         -- d-pad control
         if bjp("right") then
             if fx == boardX then
                 adjust = -boardX
             end
-            fPos = fPos + 1 + adjust
+            frame_pos = frame_pos + 1 + adjust
         elseif bjp("left") then
             if fx == 1 then
                 adjust = boardX
             end
-            fPos = fPos - 1 + adjust
+            frame_pos = frame_pos - 1 + adjust
         elseif bjp("up") then
             if fy == 1 then
                 adjust = boardX * boardY
             end
-            fPos = fPos - boardX + adjust
+            frame_pos = frame_pos - boardX + adjust
         elseif bjp("down") then
             if fy == boardY then
-                fPos = fx
+                frame_pos = fx
             else
-                fPos = fPos + boardX
+                frame_pos = frame_pos + boardX
             end
         end
-        fx, fy = pos2(fPos)
+        fx, fy = pos2(frame_pos)
         frameSprite:moveTo( -tileSize // 2 + tileSize * fx, -tileSize // 2 + tileSize * fy)
     else
 
         -- if bip("right") then
-        --     print(fPos, fPos + 2, game[fPos], game[fPos +2])
+        --     print(frame_pos, frame_pos + 2, game[frame_pos], game[frame_pos +2])
         -- elseif bip("left") then
-        --     print(fPos, fPos - 2, game[fPos], game[fPos -2])
+        --     print(frame_pos, frame_pos - 2, game[frame_pos], game[frame_pos -2])
         -- elseif bip("down") then
-        --     print(fPos, fPos + boardX, game[fPos], game[fPos + boardX])
+        --     print(frame_pos, frame_pos + boardX, game[frame_pos], game[frame_pos + boardX])
         -- elseif bip("up") then
-        --     print(fPos, fPos - boardX, game[fPos], game[fPos - boardX])
+        --     print(frame_pos, frame_pos - boardX, game[frame_pos], game[frame_pos - boardX])
         -- end
     end
 
     -- ButtonA / Frame selection
     if playdate.buttonJustReleased( "a" ) then
-        selectedPos = fPos
-        if frameSelected == 1 then
-            frameSelected = 0
+        if selectedPos == nil then -- new selection
+            selectedPos = frame_pos
+            frameSprite:setImage(images.frame_selected)
+            validMoves = _valid_moves(frame_pos)
+            for dest_pos, new_dest in pairs(validMoves) do
+                blinkSprites[dest_pos]:setVisible(true)
+            end
+        else -- clearing selection
+            selectedPos = nil
             frameSprite:setImage(images.frame)
             validMoves = {}
-        else
-            frameSelected = 1
-            frameSprite:setImage(images.frame_selected)
-            validMoves = _valid_moves(fPos)
-            print(fPos, dump(validMoves))
+            for dest_pos, new_dest in pairs(validMoves) do
+                blinkSprites[dest_pos]:setVisible(false)
+            end
         end
     end
 end
