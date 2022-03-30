@@ -10,17 +10,22 @@ local bip <const> = playdate.buttonIsPressed
 
 
 -- Global state
-local tiles = {} -- table of playdate.graphics.images
+local images = {} -- table of playdate.graphics.images
 local tileSprites = {}
 local game = {}
 local fPos = 1
-local frameImages = {} -- table of playdate.graphics.images
 local frameSprite = nil -- playdate.graphics.sprite
 local frameSelected = 0
 local selectedPos = nil
 -- Random constants
-local boardX <const> = 16
-local boardY <const> = 8
+local boards = {
+    [1] = {x=14, y=10, size=24},
+    [2] = {x=10, y=7, size=32},
+}
+local board = boards[2]
+local boardX = board.x
+local boardY = board.y
+local tileSize = board.size
 
 local screenX <const> = 400
 local screenY <const> = 240
@@ -30,7 +35,7 @@ local function dump(o)
         local s = '{ '
         for k,v in pairs(o) do
                 if type(k) ~= 'number' then k = '"'..k..'"' end
-                s = s .. '['..k..'] = ' .. dump(v) .. ','
+                s = s .. '['..k..']=' .. dump(v) .. ', '
         end
         return s .. '} '
     else
@@ -38,14 +43,20 @@ local function dump(o)
     end
 end
 
-local function spriteLoad()
-    local _tiles = {}
-    local tbl = {"1", "2", "3", "4", "5", "6", "7"}
-    for key, val in ipairs(tbl) do
-        _tiles[key] = playdate.graphics.image.new( string.format("images/24x24/%s.png", val))
-        assert( _tiles[key], "image load failure")
+local function imagesLoad()
+    local _images = {}
+    local filename = ""
+    for key, val in pairs({
+        [0]="0.png", [1]="1.png", [2]="2.png", [3]="3.png",
+        [4]="4.png", [5]="5.png", [6]="6.png", [7]="7.png",
+        frame="frame.png",
+        frame_selected="frame-selected.png",
+    }) do
+        filename = string.format("images/%sx%s/%s", tileSize, tileSize, val)
+        _images[key] = playdate.graphics.image.new( filename )
+        assert( _images[key], "image load failure: " .. filename)
     end
-    return _tiles
+    return _images
 end
 
 local function _isPrimary(tile)
@@ -176,29 +187,23 @@ end
 
 
 local function myGameSetUp()
-    tiles = spriteLoad()
+    images = imagesLoad()
     math.randomseed(playdate.getSecondsSinceEpoch())
 
     local p = 0
     while (p < (boardX * boardY))
     do
         p = p + 1
-        game[p] = 2 ^ math.random(0,2)
-        -- game[p] = math.random(1,7)
+        -- game[p] = 2 ^ math.random(0,2)
+        game[p] = math.random(1,7)
         local x, y = pos2(p)
-        tileSprites[p] = playdate.graphics.sprite.new( tiles[game[p]] )
-        tileSprites[p]:moveTo( 0 + 24 * x, 0 + 24 * y)
+        tileSprites[p] = playdate.graphics.sprite.new( images[game[p]] )
+        tileSprites[p]:moveTo( -tileSize // 2 + tileSize * x, -tileSize // 2 + tileSize * y)
         tileSprites[p]:add()
     end
 
-    frameImages[0] = playdate.graphics.image.new( "images/24x24/frame.png")
-    assert( frameImages[0], "image load failure")
-    frameImages[1] = playdate.graphics.image.new( "images/24x24/frame-selected.png")
-    assert( frameImages[1], "image load failure")
-
-    frameSprite = playdate.graphics.sprite.new( frameImages[0] )
-    frameSprite:moveTo( 24, 24)
-
+    frameSprite = playdate.graphics.sprite.new( images.frame )
+    frameSprite:moveTo( tileSize, tileSize)
     frameSprite:add()
 
     -- -- Background image.
@@ -249,7 +254,7 @@ function playdate.update()
             end
         end
         fx, fy = pos2(fPos)
-        frameSprite:moveTo( 0 + 24 * fx, 0 + 24 * fy)
+        frameSprite:moveTo( -tileSize // 2 + tileSize * fx, -tileSize // 2 + tileSize * fy)
     else
         -- if bip("right") then
         --     print(fPos, fPos + 2, game[fPos], game[fPos +2])
@@ -267,10 +272,10 @@ function playdate.update()
         selectedPos = fPos
         if frameSelected == 1 then
             frameSelected = 0
-            frameSprite:setImage(frameImages[0])
+            frameSprite:setImage(images.frame)
         else
             frameSelected = 1
-            frameSprite:setImage(frameImages[1])
+            frameSprite:setImage(images.frame_selected)
             print(fPos, dump(_valid_moves(fPos)))
         end
     end
