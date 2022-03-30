@@ -181,6 +181,7 @@ local function myGameSetUp()
     images = imagesLoad()
     math.randomseed(playdate.getSecondsSinceEpoch())
 
+    -- playdate.graphics.drawLine
     local p = 0
     while (p < (boardX * boardY))
     do
@@ -222,24 +223,26 @@ local function b2i(value) -- converts boolean to int
     return value == true and 1 or 0
 end
 
+function handleInputMoveFrame()
+    local fx, fy = pos2(frame_pos) -- frame x,y board coordinates
+    -- TODO: Convert this to buttonIsPressed with delay + repeat
+    -- d-pad control. b2i terms apply screen wrap if required.
+    if bjp("right") then
+        frame_pos = frame_pos + 1 + (b2i(fx == boardX) * -boardX)
+    elseif bjp("left") then
+        frame_pos = frame_pos - 1 + (b2i(fx == 1) * boardX)
+    elseif bjp("up") then
+        frame_pos = frame_pos - boardX + (b2i(fy == 1) * boardX * boardY)
+    elseif bjp("down") then
+        frame_pos = frame_pos + boardX - (b2i(fy == boardY) * boardX * boardY)
+    end
+    frameSprite:moveTo( tilePos(pos2(frame_pos)) )
+end
+
 function handleInput()
     if selectedPos == nil then
-        local fx, fy = pos2(frame_pos) -- frame x,y board coordinates
-
-        -- TODO: Convert this to buttonIsPressed with delay + repeat
-        -- d-pad control. b2i terms apply screen wrap if required.
-        if bjp("right") then
-            frame_pos = frame_pos + 1 + (b2i(fx == boardX) * -boardX)
-        elseif bjp("left") then
-            frame_pos = frame_pos - 1 + (b2i(fx == 1) * boardX)
-        elseif bjp("up") then
-            frame_pos = frame_pos - boardX + (b2i(fy == 1) * boardX * boardY)
-        elseif bjp("down") then
-            frame_pos = frame_pos + boardX - (b2i(fy == boardY) * boardX * boardY)
-        end
-        frameSprite:moveTo( tilePos(pos2(frame_pos)) )
+        handleInputMoveFrame()
     else
-
         -- if bip("right") then
         --     print(frame_pos, frame_pos + 2, game[frame_pos], game[frame_pos +2])
         -- elseif bip("left") then
