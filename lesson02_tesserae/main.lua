@@ -270,6 +270,10 @@ function playdate.update()
             frameSprite:setImage(images.frame_selected)
             validMoves = _valid_moves(frame_pos)
             for dest_pos, new_dest in pairs(validMoves) do
+                local spr = blinkSprites[dest_pos]
+                if not(_isPrimary(new_dest)) then
+                    spr:setImage( images.box )
+                end
                 blinkSprites[dest_pos]:setVisible(true)
             end
             blinkTimer = playdate.timer.keyRepeatTimerWithDelay(0, 500, blinkCallback)
@@ -277,7 +281,11 @@ function playdate.update()
             selectedPos = nil
             frameSprite:setImage(images.frame)
             for dest_pos, new_dest in pairs(validMoves) do
-                blinkSprites[dest_pos]:setVisible(false)
+                local spr = blinkSprites[dest_pos]
+                spr:setVisible(false)
+                if not(_isPrimary(new_dest)) then
+                    spr:setImage( images.dot )
+                end
             end
             validMoves = {}
             blinkTimer:remove()
