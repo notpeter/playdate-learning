@@ -222,11 +222,7 @@ local function b2i(value) -- converts boolean to int
     return value == true and 1 or 0
 end
 
-
-function playdate.update()
-    playdate.graphics.sprite.update()
-    playdate.timer.updateTimers()
-
+function handleInput()
     if selectedPos == nil then
         local fx, fy = pos2(frame_pos) -- frame x,y board coordinates
 
@@ -291,6 +287,12 @@ function playdate.update()
             blinkTimer:remove()
         end
     end
+end
+
+function playdate.update()
+    playdate.graphics.sprite.update()
+    playdate.timer.updateTimers()
+    handleInput()
 end
 
 myGameSetUp()
