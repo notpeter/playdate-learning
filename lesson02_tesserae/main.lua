@@ -12,13 +12,13 @@ local bip <const> = playdate.buttonIsPressed
 -- Global state
 local images = {} -- table of playdate.graphics.images
 local tileSprites = {}  -- table of playdate.graphics.sprite
+local blinkSpritePool = {} -- table of playdate.graphics.sprite
 local blinkSprites = {} -- table of playdate.graphics.sprite
-local blinkingSprites = {} -- table of playdate.graphics.sprite
 local frameSprite = nil -- playdate.graphics.sprite
 local selectedSprite = nil -- playdate.graphics.sprite
 
 local game = {} -- table of ints ()
-local frame_pos = 1
+local framePos = 1
 local selectedPos = nil
 local validMoves = {}
 
@@ -85,6 +85,7 @@ end
 local function move(src, mid, dest)
     -- returns (valid:bool, new_mid:int, new_dest:int)
     -- Check if dest tile is suitable
+
     if dest == 0 or src == dest or (src | dest == src + dest) then
         -- Check whether mid tile is suitable.
         if _isPrimary(src) and _isPrimary(mid) then
@@ -112,7 +113,7 @@ local function _mid_pos(src_pos, dest_pos)
     -- returns the midpoint between two tiles (does no validation)
     local x1, y1 = pos2(src_pos)
     local x2, y2 = pos2(dest_pos)
-    return (x1 + x2 // 2), (y1 + y2 // 2)
+    return (boardX * (y1 + y2) // 2) + ((x1 + x2) // 2)
 end
 
 local function _valid_moves(position)
@@ -161,12 +162,12 @@ local function _valid_moves(position)
     return valids
 end
 
-local function setupTiles()  --> table[playdate.graphics.sprite]
+local function setupTiles(images, tile_generator)  --> table[playdate.graphics.sprite]
     local sprite = nil --> playdate.graphics.sprite
     local tile_sprites = {} --> table[playdate.graphics.sprite]
     local num_tiles <const> = boardX * boardY
     for p=0,num_tiles do
-        game[p] = difficulty.easy()
+        game[p] = tile_generator()
 
         local x, y = tilePos(pos2(p)) -- Sprite coordinates
         sprite = playdate.graphics.sprite.new( images[game[p]] )
@@ -177,7 +178,7 @@ local function setupTiles()  --> table[playdate.graphics.sprite]
     return tile_sprites
 end
 
-local function setupImages()
+local function setupImages(tile_size)
     local _images = {}
     local filename = ""
     for key, val in pairs({
@@ -188,19 +189,19 @@ local function setupImages()
         dot="dot.png",
         box="box.png",
     }) do
-        filename = string.format("images/%sx%s/%s", tileSize, tileSize, val)
+        filename = string.format("images/%sx%s/%s", tile_size, tile_size, val)
         _images[key] = playdate.graphics.image.new( filename )
         assert( _images[key], "image load failure: " .. filename)
     end
     return _images
 end
 
-local function setupBlinks()
+local function setupBlinks(primary_image, secondary_image)
     local sprite = nil
     local blink_sprites = {[1]={}, [2]={}}  -- a table containing two tables
-    for i, image in pairs({[1]=images.dot, [2]=images.box}) do
+    for i, image in pairs({[1]=primary_image, [2]=secondary_image}) do
         for j=1,8 do
-            sprite = playdate.graphics.sprite.new( images.dot )
+            sprite = playdate.graphics.sprite.new( image )
             sprite:setVisible(false)
             sprite:add()
             blink_sprites[i][j] = sprite
@@ -212,15 +213,15 @@ end
 local function myGameSetUp()
     math.randomseed(playdate.getSecondsSinceEpoch())
 
-    images = setupImages()
-    tileSprites = setupTiles()
-    blinkSprites = setupBlinks()
-
-    -- playdate.graphics.drawLine
-
+    -- Init our globals
+    images = setupImages(tileSize)
+    tileSprites = setupTiles(images, difficulty.easy)
+    blinkSpritePool = setupBlinks(images.dot, images.box)
+    blinkSprites = {}
+    framePos = 1
 
     frameSprite = playdate.graphics.sprite.new( images.frame )
-    frameSprite:moveTo( tilePos(1, 1) )
+    frameSprite:moveTo( tilePos(pos2(framePos)) )
     frameSprite:add()
 
     selectedSprite = playdate.graphics.sprite.new( images.frame_selected )
@@ -243,92 +244,105 @@ local function b2i(value) -- converts boolean to int
     return value == true and 1 or 0
 end
 
-function handleInputMoveFrame()
+function handleInputMoveFrame(frame_pos, frame_sprite)
     local fx, fy = pos2(frame_pos) -- frame x,y board coordinates
+    local new_pos = nil
     -- TODO: Convert this to buttonIsPressed with delay + repeat
     -- d-pad control. b2i terms apply screen wrap if required.
     if bjp("right") then
-        frame_pos = frame_pos + 1 + (b2i(fx == boardX) * -boardX)
+        new_pos = frame_pos + 1 + (b2i(fx == boardX) * -boardX)
     elseif bjp("left") then
-        frame_pos = frame_pos - 1 + (b2i(fx == 1) * boardX)
+        new_pos = frame_pos - 1 + (b2i(fx == 1) * boardX)
     elseif bjp("up") then
-        frame_pos = frame_pos - boardX + (b2i(fy == 1) * boardX * boardY)
+        new_pos = frame_pos - boardX + (b2i(fy == 1) * boardX * boardY)
     elseif bjp("down") then
-        frame_pos = frame_pos + boardX - (b2i(fy == boardY) * boardX * boardY)
+        new_pos = frame_pos + boardX - (b2i(fy == boardY) * boardX * boardY)
+    else
+        return frame_pos
     end
-    frameSprite:moveTo( tilePos(pos2(frame_pos)) )
+    frame_sprite:moveTo( tilePos(pos2(new_pos)) )
+    return new_pos
 end
 
-function moveFrame(horizontal, vertical)
-    local fx, fy = pos2(frame_pos)
-    local mx = frame_pos + horizontal * b2i(horizontal > 0) * b2i(fx == 1) * boardX
-end
+-- function moveFrame(horizontal, vertical)
+--     local fx, fy = pos2(frame_pos)
+--     local mx = frame_pos + horizontal * b2i(horizontal > 0) * b2i(fx == 1) * boardX
+-- end
+--
+-- function directionalHandler()
+--     local horizontal = b2i(bip("right")) - b2i(bip("left"))
+--     local vertical = b2i(bip("down")) - b2i(bip("up"))
+-- end
 
 local function blinkCallback()
-    if not(selectedPos == nil) then
-        for _, spr in pairs(blinkingSprites) do
-            spr:setVisible(not(spr:isVisible()))
-        end
+    for _, spr in pairs(blinkSprites) do
+        spr:setVisible(not(spr:isVisible()))
     end
 end
 
----- Selection / Possible Moves
-local function _hide_moves()
-    frameSprite:setImage(images.frame)
-    for _, sprite in pairs(blinkingSprites) do
-        sprite:setVisible(false)
-    end
-    -- TODO: Research Lua GC frequency on playdate device.
-    blinkingSprites = {}
-    validMoves = {}
-end
-local function _show_moves(position)
-    validMoves = _valid_moves(position)
+local function _show_moves(position, valid_moves, blinking_sprite_pool)
+    local blinks = {}
     local num_moves = 0
-    for dest_pos, new_dest in pairs(validMoves) do
+    for dest_pos, new_dest in pairs(valid_moves) do
         num_moves = num_moves + 1
         local dot_or_box = 1 + b2i(_isSecondary(new_dest) or _isTertiary(new_dest))
-        local sprite = blinkSprites[dot_or_box][num_moves]
+        local sprite = blinking_sprite_pool[dot_or_box][num_moves]
         sprite:moveTo(tilePos(pos2(dest_pos)))
         sprite:setVisible(true)
-        table.insert(blinkingSprites, sprite)
+        table.insert(blinks, sprite)
     end
+    return blinks
 end
-local function _select(position)
-    selectedPos = position
-    selectedSprite:moveTo(tilePos(pos2(position)))
-    selectedSprite:setVisible(true)
-    blinkTimer = playdate.timer.keyRepeatTimerWithDelay(300, 500, blinkCallback)
-end
-local function _deselect(position)
-    selectedPos = nil
-    selectedSprite:setVisible(false)
-    blinkTimer:remove()
+
+local function tileMove(tile_sprites, images, src_sprite, mid_sprite, dest_sprite)
+    valid, new_mid, new_dest = move(src_pos, mid_pos, dest_pos)
+
+    tile_sprites[src_pos].setImage(images[src])
+    tile_sprites[mid_pos].setImage(images[mid])
+    tile_sprites[mid_pos].setImage(images[dest])
 end
 
 function handleInput()
     -- directionalHandler()
-    handleInputMoveFrame()
 
-    -- if selectedPos == nil then
-        -- if bip("right") then
-        --     print(frame_pos, frame_pos + 2, game[frame_pos], game[frame_pos +2])
-        -- elseif bip("left") then
-        --     print(frame_pos, frame_pos - 2, game[frame_pos], game[frame_pos -2])
-        -- elseif bip("down") then
-        --     print(frame_pos, frame_pos + boardX, game[frame_pos], game[frame_pos + boardX])
-        -- elseif bip("up") then
-        --     print(frame_pos, frame_pos - boardX, game[frame_pos], game[frame_pos - boardX])
-        -- end
+    -- Manipulate Global state
+    framePos = handleInputMoveFrame(framePos, frameSprite)
 
     -- ButtonA / Frame selection
     if playdate.buttonJustReleased( "a" ) then
-        if selectedPos == nil then -- new selection
-            _select(frame_pos)
-            _show_moves(frame_pos)
-        else -- clearing selection
-            _deselect()
-            _hide_moves()
+        if selectedPos == nil then
+            -- Select
+            selectedPos = framePos
+            selectedSprite:moveTo(tilePos(pos2(selectedPos)))
+            selectedSprite:setVisible(true)
+            validMoves = _valid_moves(framePos)
+            blinkSprites = _show_moves(framePos, validMoves, blinkSpritePool)
+            blinkTimer = playdate.timer.keyRepeatTimerWithDelay(300, 500, blinkCallback)
+        else
+            selectedSprite:setVisible(false)
+            if not(selectedPos == framePos) then
+                local src_pos = selectedPos
+                local mid_pos = _mid_pos(selectedPos, framePos)
+                local dest_pos = framePos
+                valid, new_mid, new_dest = move(src_pos, mid_pos, dest_pos)
+                print(src_pos, mid_pos, dest_pos)
+                print(valid, new_mid, new_dest)
+                if valid then
+                    tileMove(tileSprites, images, src_pos, mid_pos, dest_pos)
+                end
+            end
+            selectedPos = nil
+            for _, sprite in pairs(blinkSprites) do
+                sprite:setVisible(false)
+            end
+            blinkTimer:remove()
+            blinkingSprites = {}
+            validMoves = {}
+            -- RESEARCH: Performance/GC; is re-using tables faster?
+            -- for i = #blinkingSprites, 1, -1 do
+            --     blinkingSprites[i]:setVisible(false)
+            --     table.remove(blinkingSprites, i)
+            -- end
         end
     end
 end
