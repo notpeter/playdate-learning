@@ -113,7 +113,7 @@ local function _mid_pos(src_pos, dest_pos)
     -- returns the midpoint between two tiles (does no validation)
     local x1, y1 = pos2(src_pos)
     local x2, y2 = pos2(dest_pos)
-    return (boardX * (y1 + y2) // 2) + ((x1 + x2) // 2)
+    return boardX * (((y1 + y2) // 2) - 1) + ((x1 + x2) // 2)
 end
 
 local function _valid_moves(position)
