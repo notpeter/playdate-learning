@@ -3,6 +3,7 @@ import "CoreLibs/object"
 import "CoreLibs/graphics"
 import "CoreLibs/sprites"
 import "CoreLibs/timer"
+
 -- Import Aliases (More performant and shorter)
 local gfx <const> = playdate.graphics
 local bjp <const> = playdate.buttonJustPressed
@@ -10,12 +11,16 @@ local bip <const> = playdate.buttonIsPressed
 
 
 -- Global state
-local images = {} -- table of playdate.graphics.images
-local tileSprites = {}  -- table of playdate.graphics.sprite
-local blinkSpritePool = {} -- table of playdate.graphics.sprite
-local blinkSprites = {} -- table of playdate.graphics.sprite
-local frameSprite = nil -- playdate.graphics.sprite
-local selectedSprite = nil -- playdate.graphics.sprite
+local images = {}               -- table of playdate.graphics.images
+local tileSprites = {}          -- table of playdate.graphics.sprite
+local blinkSpritePool = {}      -- table of playdate.graphics.sprite
+local blinkSprites = {}         -- table of playdate.graphics.sprite
+local frameSprite = nil         -- playdate.graphics.sprite
+local selectedSprite = nil      -- playdate.graphics.sprite
+local movingSprite = nil        -- playdate.graphics.sprite
+local animatedTileSprite = nil  -- playdate.graphics.sprite
+local undoBuffer = {}
+local undoPosition = 0
 
 local game = {} -- table of ints ()
 local framePos = 1
@@ -26,10 +31,11 @@ local blinkTimer = nil
 
 -- Random constants
 local boards = {
-    [1] = {x=14, y=10, size=24},
-    [2] = {x=10, y=7, size=32},
+    [0] = {x=6, y=3, size=32, xshift=104, yshift=72},
+    [1] = {x=10, y=7, size=32, xshift=40, yshift=8},
+    [2] = {x=14, y=10, size=24, xshift=32, yshift=0},
 }
-local board = boards[2]
+local board = boards[1]
 local difficulty = {
     -- TODO: Make less difficult. E.g. medium 2/3 primary; 1/3 secondary not 1/2 & 1/2.
     easy = function(); return 2 ^ math.random(0,2); end,    -- all primary
@@ -38,10 +44,23 @@ local difficulty = {
 }
 local boardX = board.x
 local boardY = board.y
+local boardXShift = board.xshift
+local boardYShift = board.yshift
 local tileSize = board.size
 
 local screenX <const> = 400
 local screenY <const> = 240
+
+local Tiles = {
+    "EMPTY",
+    "CIRCLE",           --  ( )  circle
+    "CROSS",            --   +   cross
+    "CROSS_CIRCLE",     --  (+)  cross in circle
+    "SQUARE",           -- [   ] square
+    "CIRCLE_SQUARE",    -- [( )] circle in square
+    "CROSS_SQUARE",     -- [ + ] cross in square
+    "TERTIARY",         -- [(+)]
+}
 
 local function tile2str(tile)
     local k =  {
@@ -99,7 +118,7 @@ end
 
 local function tilePos(x, y)
     -- Takes x,y board coordinates; returns xy screen coordinates (sprite location)
-    return -tileSize // 2 + tileSize * x, -tileSize // 2 + tileSize * y
+    return boardXShift + -tileSize // 2 + tileSize * x, boardYShift -tileSize // 2 + tileSize * y
 end
 
 local function pos2(position)
@@ -167,7 +186,7 @@ local function setupTiles(images, tile_generator)  --> table[playdate.graphics.s
     local sprite = nil --> playdate.graphics.sprite
     local tile_sprites = {} --> table[playdate.graphics.sprite]
     local num_tiles <const> = boardX * boardY
-    for p=0,num_tiles do
+    for p=1,num_tiles do
         game[p] = tile_generator()
 
         local x, y = tilePos(pos2(p)) -- Sprite coordinates
@@ -186,7 +205,7 @@ local function setupImages(tile_size)
         [0]="0.png", [1]="1.png", [2]="2.png", [3]="3.png",
         [4]="4.png", [5]="5.png", [6]="6.png", [7]="7.png",
         frame="frame.png",
-        frame_selected="frame-selected.png",
+        frame_selected="frame2.png",
         dot="dot.png",
         box="box.png",
     }) do
@@ -306,7 +325,14 @@ local function tileMove(tile_sprites, images, src_pos, mid_pos, dest_pos)
     tile_sprites[dest_pos]:setImage(images[new_dest])
 end
 
-function handleInput()
+
+local function tileAnimationFactory(src_pos, mid_pos, dest_pos)
+    -- animatedTileSprite
+    local function tileAnimaitonCallback()
+    end
+end
+
+local function handleInput()
     -- directionalHandler()
 
     -- Manipulate Global state
