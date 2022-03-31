@@ -13,9 +13,11 @@ local bip <const> = playdate.buttonIsPressed
 local images = {} -- table of playdate.graphics.images
 local tileSprites = {}  -- table of playdate.graphics.sprite
 local blinkSprites = {} -- table of playdate.graphics.sprite
+local blinkingSprites = {} -- table of playdate.graphics.sprite
 local frameSprite = nil -- playdate.graphics.sprite
+local selectedSprite = nil -- playdate.graphics.sprite
 
-local game = {}
+local game = {} -- table of ints ()
 local frame_pos = 1
 local selectedPos = nil
 local validMoves = {}
@@ -66,24 +68,6 @@ local function dump(o)
     else
         return tostring(o)
     end
-end
-
-local function imagesLoad()
-    local _images = {}
-    local filename = ""
-    for key, val in pairs({
-        [0]="0.png", [1]="1.png", [2]="2.png", [3]="3.png",
-        [4]="4.png", [5]="5.png", [6]="6.png", [7]="7.png",
-        frame="frame.png",
-        frame_selected="frame-selected.png",
-        dot="dot.png",
-        box="box.png",
-    }) do
-        filename = string.format("images/%sx%s/%s", tileSize, tileSize, val)
-        _images[key] = playdate.graphics.image.new( filename )
-        assert( _images[key], "image load failure: " .. filename)
-    end
-    return _images
 end
 
 local function _isPrimary(tile); return tile == 1 or tile == 2 or tile == 4; end
@@ -177,35 +161,71 @@ local function _valid_moves(position)
     return valids
 end
 
-local function myGameSetUp()
-    images = imagesLoad()
-    math.randomseed(playdate.getSecondsSinceEpoch())
-
-    -- playdate.graphics.drawLine
-    local p = 0
-    while (p < (boardX * boardY))
-    do
-        p = p + 1
+local function setupTiles()  --> table[playdate.graphics.sprite]
+    local sprite = nil --> playdate.graphics.sprite
+    local tile_sprites = {} --> table[playdate.graphics.sprite]
+    local num_tiles <const> = boardX * boardY
+    for p=0,num_tiles do
         game[p] = difficulty.easy()
 
         local x, y = tilePos(pos2(p)) -- Sprite coordinates
-
-        local tileSprite = playdate.graphics.sprite.new( images[game[p]] )
-        tileSprite:moveTo(x, y)
-        tileSprite:add()
-        tileSprites[p] = tileSprite
-
-        local blinkSprite = playdate.graphics.sprite.new( images.dot )
-        blinkSprite:moveTo(x, y)
-        blinkSprite:setVisible(false)
-        blinkSprite:add()
-        blinkSprites[p] = blinkSprite
+        sprite = playdate.graphics.sprite.new( images[game[p]] )
+        sprite:moveTo(x, y)
+        sprite:add()
+        tile_sprites[p] = sprite
     end
+    return tile_sprites
+end
+
+local function setupImages()
+    local _images = {}
+    local filename = ""
+    for key, val in pairs({
+        [0]="0.png", [1]="1.png", [2]="2.png", [3]="3.png",
+        [4]="4.png", [5]="5.png", [6]="6.png", [7]="7.png",
+        frame="frame.png",
+        frame_selected="frame-selected.png",
+        dot="dot.png",
+        box="box.png",
+    }) do
+        filename = string.format("images/%sx%s/%s", tileSize, tileSize, val)
+        _images[key] = playdate.graphics.image.new( filename )
+        assert( _images[key], "image load failure: " .. filename)
+    end
+    return _images
+end
+
+local function setupBlinks()
+    local sprite = nil
+    local blink_sprites = {[1]={}, [2]={}}  -- a table containing two tables
+    for i, image in pairs({[1]=images.dot, [2]=images.box}) do
+        for j=1,8 do
+            sprite = playdate.graphics.sprite.new( images.dot )
+            sprite:setVisible(false)
+            sprite:add()
+            blink_sprites[i][j] = sprite
+        end
+    end
+    return blink_sprites
+end
+
+local function myGameSetUp()
+    math.randomseed(playdate.getSecondsSinceEpoch())
+
+    images = setupImages()
+    tileSprites = setupTiles()
+    blinkSprites = setupBlinks()
+
+    -- playdate.graphics.drawLine
+
 
     frameSprite = playdate.graphics.sprite.new( images.frame )
     frameSprite:moveTo( tilePos(1, 1) )
     frameSprite:add()
 
+    selectedSprite = playdate.graphics.sprite.new( images.frame_selected )
+    selectedSprite:setVisible(false)
+    selectedSprite:add()
 
     -- -- Background image.
     -- local backgroundImage = playdate.graphics.image.new( "images/400x240-black.png" )
@@ -239,10 +259,58 @@ function handleInputMoveFrame()
     frameSprite:moveTo( tilePos(pos2(frame_pos)) )
 end
 
+function moveFrame(horizontal, vertical)
+    local fx, fy = pos2(frame_pos)
+    local mx = frame_pos + horizontal * b2i(horizontal > 0) * b2i(fx == 1) * boardX
+end
+
+local function blinkCallback()
+    if not(selectedPos == nil) then
+        for _, spr in pairs(blinkingSprites) do
+            spr:setVisible(not(spr:isVisible()))
+        end
+    end
+end
+
+---- Selection / Possible Moves
+local function _hide_moves()
+    frameSprite:setImage(images.frame)
+    for _, sprite in pairs(blinkingSprites) do
+        sprite:setVisible(false)
+    end
+    -- TODO: Research Lua GC frequency on playdate device.
+    blinkingSprites = {}
+    validMoves = {}
+end
+local function _show_moves(position)
+    validMoves = _valid_moves(position)
+    local num_moves = 0
+    for dest_pos, new_dest in pairs(validMoves) do
+        num_moves = num_moves + 1
+        local dot_or_box = 1 + b2i(_isSecondary(new_dest) or _isTertiary(new_dest))
+        local sprite = blinkSprites[dot_or_box][num_moves]
+        sprite:moveTo(tilePos(pos2(dest_pos)))
+        sprite:setVisible(true)
+        table.insert(blinkingSprites, sprite)
+    end
+end
+local function _select(position)
+    selectedPos = position
+    selectedSprite:moveTo(tilePos(pos2(position)))
+    selectedSprite:setVisible(true)
+    blinkTimer = playdate.timer.keyRepeatTimerWithDelay(300, 500, blinkCallback)
+end
+local function _deselect(position)
+    selectedPos = nil
+    selectedSprite:setVisible(false)
+    blinkTimer:remove()
+end
+
 function handleInput()
-    if selectedPos == nil then
-        handleInputMoveFrame()
-    else
+    -- directionalHandler()
+    handleInputMoveFrame()
+
+    -- if selectedPos == nil then
         -- if bip("right") then
         --     print(frame_pos, frame_pos + 2, game[frame_pos], game[frame_pos +2])
         -- elseif bip("left") then
@@ -252,42 +320,15 @@ function handleInput()
         -- elseif bip("up") then
         --     print(frame_pos, frame_pos - boardX, game[frame_pos], game[frame_pos - boardX])
         -- end
-    end
-
-    local function blinkCallback()
-        if not(selectedPos == nil) then
-            for dest_pos, new_dest in pairs(validMoves) do
-                blinkSprites[dest_pos]:setVisible(not(blinkSprites[dest_pos]:isVisible()))
-            end
-        end
-    end
 
     -- ButtonA / Frame selection
     if playdate.buttonJustReleased( "a" ) then
         if selectedPos == nil then -- new selection
-            selectedPos = frame_pos
-            frameSprite:setImage(images.frame_selected)
-            validMoves = _valid_moves(frame_pos)
-            for dest_pos, new_dest in pairs(validMoves) do
-                local spr = blinkSprites[dest_pos]
-                if not(_isPrimary(new_dest)) then
-                    spr:setImage( images.box )
-                end
-                blinkSprites[dest_pos]:setVisible(true)
-            end
-            blinkTimer = playdate.timer.keyRepeatTimerWithDelay(0, 500, blinkCallback)
+            _select(frame_pos)
+            _show_moves(frame_pos)
         else -- clearing selection
-            selectedPos = nil
-            frameSprite:setImage(images.frame)
-            for dest_pos, new_dest in pairs(validMoves) do
-                local spr = blinkSprites[dest_pos]
-                spr:setVisible(false)
-                if not(_isPrimary(new_dest)) then
-                    spr:setImage( images.dot )
-                end
-            end
-            validMoves = {}
-            blinkTimer:remove()
+            _deselect()
+            _hide_moves()
         end
     end
 end
