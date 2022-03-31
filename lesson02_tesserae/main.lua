@@ -83,9 +83,9 @@ local function _contains(tile1, tile2)
 end
 
 local function move(src, mid, dest)
+    -- Note these are not positions, they are tile ints
     -- returns (valid:bool, new_mid:int, new_dest:int)
     -- Check if dest tile is suitable
-
     if dest == 0 or src == dest or (src | dest == src + dest) then
         -- Check whether mid tile is suitable.
         if _isPrimary(src) and _isPrimary(mid) then
@@ -113,7 +113,8 @@ local function _mid_pos(src_pos, dest_pos)
     -- returns the midpoint between two tiles (does no validation)
     local x1, y1 = pos2(src_pos)
     local x2, y2 = pos2(dest_pos)
-    return boardX * (((y1 + y2) // 2) - 1) + ((x1 + x2) // 2)
+    local mid_pos = boardX * (((y1 + y2) // 2) - 1) + ((x1 + x2) // 2)
+    return mid_pos
 end
 
 local function _valid_moves(position)
@@ -294,12 +295,15 @@ local function _show_moves(position, valid_moves, blinking_sprite_pool)
     return blinks
 end
 
-local function tileMove(tile_sprites, images, src_sprite, mid_sprite, dest_sprite)
-    valid, new_mid, new_dest = move(src_pos, mid_pos, dest_pos)
-
-    tile_sprites[src_pos].setImage(images[src])
-    tile_sprites[mid_pos].setImage(images[mid])
-    tile_sprites[mid_pos].setImage(images[dest])
+local function tileMove(tile_sprites, images, src_pos, mid_pos, dest_pos)
+    valid, new_mid, new_dest = move(game[src_pos], game[mid_pos], game[dest_pos])
+    assert ( valid, "invalid tile move" )
+    game[src_pos] = 0
+    game[mid_pos] = new_mid
+    game[dest_pos] = new_dest
+    tile_sprites[src_pos]:setImage(images[0])
+    tile_sprites[mid_pos]:setImage(images[new_mid])
+    tile_sprites[dest_pos]:setImage(images[new_dest])
 end
 
 function handleInput()
@@ -315,16 +319,21 @@ function handleInput()
             selectedPos = framePos
             selectedSprite:moveTo(tilePos(pos2(selectedPos)))
             selectedSprite:setVisible(true)
-            validMoves = _valid_moves(framePos)
+            validMoves = _valid_moves(selectedPos)
             blinkSprites = _show_moves(framePos, validMoves, blinkSpritePool)
             blinkTimer = playdate.timer.keyRepeatTimerWithDelay(300, 500, blinkCallback)
         else
             selectedSprite:setVisible(false)
-            if not(selectedPos == framePos) then
+            print(framePos, dump(validMoves), validMoves[framePos] == nil)
+            if (selectedPos == framePos) then
+                ;
+            elseif validMoves[framePos] == nil then
+                ;
+            else
                 local src_pos = selectedPos
                 local mid_pos = _mid_pos(selectedPos, framePos)
                 local dest_pos = framePos
-                valid, new_mid, new_dest = move(src_pos, mid_pos, dest_pos)
+                valid, new_mid, new_dest = move(game[src_pos], game[mid_pos], game[dest_pos])
                 print(src_pos, mid_pos, dest_pos)
                 print(valid, new_mid, new_dest)
                 if valid then
