@@ -9,7 +9,6 @@ local gfx <const> = playdate.graphics
 local bjp <const> = playdate.buttonJustPressed
 local bip <const> = playdate.buttonIsPressed
 
-
 -- Global state
 local images = {}               -- table of playdate.graphics.images
 local tileSprites = {}          -- table of playdate.graphics.sprite
@@ -20,7 +19,7 @@ local selectedSprite = nil      -- playdate.graphics.sprite
 local movingSprite = nil        -- playdate.graphics.sprite
 local animatedTileSprite = nil  -- playdate.graphics.sprite
 local undoBuffer = {}
-local undoPosition = 0
+local redoBuffer = {}           -- table {src}
 
 local game = {} -- table of ints ()
 local framePos = 1
@@ -118,7 +117,7 @@ end
 
 local function tilePos(x, y)
     -- Takes x,y board coordinates; returns xy screen coordinates (sprite location)
-    return boardXShift + -tileSize // 2 + tileSize * x, boardYShift -tileSize // 2 + tileSize * y
+    return boardXShift + -tileSize // 2 + (tileSize) * x, boardYShift -tileSize // 2 + (tileSize) * y
 end
 
 local function pos2(position)
@@ -201,15 +200,16 @@ end
 local function setupImages(tile_size)
     local _images = {}
     local filename = ""
+    folder_fmt = "images/%sx%s/%s"
     for key, val in pairs({
         [0]="0.png", [1]="1.png", [2]="2.png", [3]="3.png",
         [4]="4.png", [5]="5.png", [6]="6.png", [7]="7.png",
         frame="frame.png",
-        frame_selected="frame2.png",
+        frame_selected="selected.png",
         dot="dot.png",
         box="box.png",
     }) do
-        filename = string.format("images/%sx%s/%s", tile_size, tile_size, val)
+        filename = string.format(folder_fmt, tile_size, tile_size, val)
         _images[key] = playdate.graphics.image.new( filename )
         assert( _images[key], "image load failure: " .. filename)
     end
@@ -314,15 +314,58 @@ local function _show_moves(position, valid_moves, blinking_sprite_pool)
     return blinks
 end
 
-local function tileMove(tile_sprites, images, src_pos, mid_pos, dest_pos)
+local function undo()
+    if #undoBuffer >= 1 then
+        local moo = table.remove(undoBuffer)
+        table.insert(redoBuffer, {
+            src_pos=moo.src_pos, mid_pos=moo.mid_pos, dest_pos=moo.dest_pos,
+            src=game[moo.src_pos], mid=game[moo.mid_pos], dest=game[moo.dest_pos]
+        })
+        game[moo.src_pos] = moo.src
+        game[moo.mid_pos] = moo.mid
+        game[moo.dest_pos] = moo.dest
+        tileSprites[moo.src_pos]:setImage(images[moo.src])
+        tileSprites[moo.mid_pos]:setImage(images[moo.mid])
+        tileSprites[moo.dest_pos]:setImage(images[moo.dest])
+        framePos = moo.src_pos
+        frameSprite:moveTo( tilePos(pos2(framePos)) )
+    end
+end
+local function redo()
+    if #redoBuffer >= 1 then
+        local moo = table.remove(redoBuffer)
+        table.insert(undoBuffer, {
+            src_pos=moo.src_pos, mid_pos=moo.mid_pos, dest_pos=moo.dest_pos,
+            src=game[moo.src_pos], mid=game[moo.mid_pos], dest=game[moo.dest_pos]
+        })
+        game[moo.src_pos] = moo.src
+        game[moo.mid_pos] = moo.mid
+        game[moo.dest_pos] = moo.dest
+        tileSprites[moo.src_pos]:setImage(images[moo.src])
+        tileSprites[moo.mid_pos]:setImage(images[moo.mid])
+        tileSprites[moo.dest_pos]:setImage(images[moo.dest])
+        framePos = moo.dest_pos
+        frameSprite:moveTo( tilePos(pos2(framePos)) )
+    end
+end
+
+local function tileMove(src_pos, mid_pos, dest_pos)
+    print("move", src_pos, mid_pos, dest_pos, game[src_pos], game[mid_pos], game[dest_pos])
     valid, new_mid, new_dest = move(game[src_pos], game[mid_pos], game[dest_pos])
     assert ( valid, "invalid tile move" )
+
+    table.insert(undoBuffer, {
+        src_pos=src_pos, mid_pos=mid_pos, dest_pos=dest_pos,
+        src=game[src_pos], mid=game[mid_pos], dest=game[dest_pos]
+    })
+    redoBuffer = {}
+
     game[src_pos] = 0
     game[mid_pos] = new_mid
     game[dest_pos] = new_dest
-    tile_sprites[src_pos]:setImage(images[0])
-    tile_sprites[mid_pos]:setImage(images[new_mid])
-    tile_sprites[dest_pos]:setImage(images[new_dest])
+    tileSprites[src_pos]:setImage(images[0])
+    tileSprites[mid_pos]:setImage(images[new_mid])
+    tileSprites[dest_pos]:setImage(images[new_dest])
 end
 
 
@@ -335,12 +378,19 @@ end
 local function handleInput()
     -- directionalHandler()
 
-    -- Manipulate Global state
-    framePos = handleInputMoveFrame(framePos, frameSprite)
+    if bip("b") then
+        if bjp("left") then
+            undo()
+        elseif bjp("right") then
+            redo()
+        end
+    else
+        framePos = handleInputMoveFrame(framePos, frameSprite)
+    end
 
     -- ButtonA / Frame selection
     if playdate.buttonJustReleased( "a" ) then
-        if selectedPos == nil then
+        if selectedPos == nil and game[framePos] > 0 then
             -- Select
             selectedPos = framePos
             selectedSprite:moveTo(tilePos(pos2(selectedPos)))
@@ -363,7 +413,7 @@ local function handleInput()
                 print(src_pos, mid_pos, dest_pos)
                 print(valid, new_mid, new_dest)
                 if valid then
-                    tileMove(tileSprites, images, src_pos, mid_pos, dest_pos)
+                    tileMove(src_pos, mid_pos, dest_pos)
                 end
             end
             selectedPos = nil
