@@ -201,7 +201,7 @@ end
 local function setupImages(tile_size)
     local _images = {}
     local filename = ""
-    folder_fmt = "images/%sx%s/%s"
+    local folder_fmt = "images/%sx%s/%s"
     for key, val in pairs({
         [0]="0.png", [1]="1.png", [2]="2.png", [3]="3.png",
         [4]="4.png", [5]="5.png", [6]="6.png", [7]="7.png",
@@ -265,7 +265,7 @@ local function b2i(value) -- converts boolean to int
     return value == true and 1 or 0
 end
 
-function handleInputMoveFrame(frame_pos, frame_sprite)
+local function handleInputMoveFrame(frame_pos, frame_sprite)
     local fx, fy = pos2(frame_pos) -- frame x,y board coordinates
     local new_pos = nil
     -- TODO: Convert this to buttonIsPressed with delay + repeat
@@ -352,7 +352,7 @@ end
 
 local function tileMove(src_pos, mid_pos, dest_pos)
     print("move", src_pos, mid_pos, dest_pos, game[src_pos], game[mid_pos], game[dest_pos])
-    valid, new_mid, new_dest = move(game[src_pos], game[mid_pos], game[dest_pos])
+    local valid, new_mid, new_dest = move(game[src_pos], game[mid_pos], game[dest_pos])
     assert ( valid, "invalid tile move" )
 
     table.insert(undoBuffer, {
@@ -443,10 +443,15 @@ local function handleInput()
     end
 end
 
+function freedraw()
+    playdate.graphics.drawTextAligned(#undoBuffer, screenX - 20, 0)
+end
+
 function playdate.update()
     playdate.graphics.sprite.update()
     playdate.timer.updateTimers()
     handleInput()
+    freedraw()
 end
 
 myGameSetUp()
