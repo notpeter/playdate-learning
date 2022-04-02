@@ -31,7 +31,7 @@ local blinkTimer = nil
 -- Random constants
 local boards = {
     [0] = {x=6, y=3, size=32, xshift=104, yshift=72},
-    [1] = {x=10, y=7, size=32, xshift=40, yshift=8},
+    [1] = {x=10, y=7, size=32, xshift=34, yshift=4},
     [2] = {x=14, y=10, size=24, xshift=32, yshift=0},
 }
 local board = boards[1]
@@ -117,7 +117,7 @@ end
 
 local function tilePos(x, y)
     -- Takes x,y board coordinates; returns xy screen coordinates (sprite location)
-    return boardXShift + -tileSize // 2 + (tileSize) * x, boardYShift -tileSize // 2 + (tileSize) * y
+    return boardXShift + -tileSize // 2 + (tileSize + 1) * x, boardYShift -tileSize // 2 + (tileSize + 1) * y
 end
 
 local function pos2(position)
@@ -248,16 +248,16 @@ local function myGameSetUp()
     selectedSprite:setVisible(false)
     selectedSprite:add()
 
-    -- -- Background image.
-    -- local backgroundImage = playdate.graphics.image.new( "images/400x240-black.png" )
-    -- assert( backgroundImage, "image load failure")
-    -- playdate.graphics.sprite.setBackgroundDrawingCallback(
-    --     function( x, y, width, height )
-    --         playdate.graphics.setClipRect( x, y, width, height )
-    --         backgroundImage:draw( 0, 0 )
-    --         playdate.graphics.clearClipRect()
-    --     end
-    -- )
+    -- Background image.
+    local backgroundImage = playdate.graphics.image.new( "images/400x240-10x7.png" )
+    assert( backgroundImage, "image load failure")
+    playdate.graphics.sprite.setBackgroundDrawingCallback(
+        function( x, y, width, height )
+            playdate.graphics.setClipRect( x, y, width, height )
+            backgroundImage:draw( 0, 0 )
+            playdate.graphics.clearClipRect()
+        end
+    )
 end
 
 local function b2i(value) -- converts boolean to int
