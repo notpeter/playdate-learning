@@ -3,6 +3,7 @@ import "CoreLibs/object"
 import "CoreLibs/graphics"
 import "CoreLibs/sprites"
 import "CoreLibs/timer"
+import "CoreLibs/crank"
 
 -- Import Aliases (More performant and shorter)
 local gfx <const> = playdate.graphics
@@ -377,6 +378,16 @@ end
 
 local function handleInput()
     -- directionalHandler()
+
+    -- This is a terrible, but simple crank interface.
+    if not playdate.isCrankDocked() then
+        cranks = playdate.getCrankTicks(6)
+        if cranks > 0 then
+            undo()
+        elseif cranks < 0 then
+            redo()
+        end
+    end
 
     if bip("b") then
         if bjp("left") then
