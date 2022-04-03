@@ -37,11 +37,11 @@ local blinkTimer = nil
 
 -- Random constants
 local boards = {
-    [0] = {x=6, y=3, size=32, xshift=104, yshift=72},
+    [0] = {x=6, y=3, size=32, xshift=0, yshift=0},
     [1] = {x=10, y=7, size=32, xshift=0, yshift=0},
     [2] = {x=14, y=10, size=24, xshift=32, yshift=0},
 }
-local board = boards[1]
+local board = boards[0]
 local difficulty = {
     -- TODO: Make less difficult. E.g. medium 2/3 primary; 1/3 secondary not 1/2 & 1/2.
     easy = function(); return 2 ^ math.random(0,2); end,    -- all primary
@@ -55,7 +55,7 @@ local boardYShift = board.yshift
 local tileSize = board.size
 
 local function draw_grid(rows, cols, size)
-    rows, cols, size = 10, 7, 32
+    -- rows, cols, size = 10, 7, 32
     for row = 0, rows do
         local x = row * (size + 1)
         playdate.graphics.drawLine(x, 0, x, cols * (size + 1))
@@ -451,7 +451,7 @@ local function freedraw()
     playdate.graphics.drawTextAligned("Left", screenX - 50, 120,  kTextAlignment.left )
     playdate.graphics.drawTextAligned(string.format("*%s*", remaining), screenX - 25, 140, kTextAlignment.center )
 
-    draw_grid(7, 7, 32)
+    draw_grid(board.x, board.y, tileSize)
 end
 
 function playdate.update()
