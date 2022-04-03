@@ -18,7 +18,7 @@ local function myGameSetUp()
 
     local dvdImage = playdate.graphics.image.new( "images/dvd-64-white.png" )
     assert( dvdImage , "image load failure" )
-    dvd = playdate.graphics.sprite.new( dvdImage )
+    local dvd = playdate.graphics.sprite.new( dvdImage )
     dvd:moveTo( screenX / 2, screenY / 2 ) -- center to center of Playdate screens
     dvd:add()
     -- Let's attach some state
@@ -65,7 +65,7 @@ function playdate.update()
 
     -- This is a terrible, but simple crank interface.
     if not playdate.isCrankDocked() then
-        change, _ = playdate.getCrankChange()
+        local change, _ = playdate.getCrankChange()
         if change > 0 then
             speed = math.abs(speed)
         elseif change < 0 then

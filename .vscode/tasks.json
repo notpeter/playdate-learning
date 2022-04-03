@@ -1,0 +1,23 @@
+{
+    // tasks.json https://go.microsoft.com/fwlink/?LinkId=733558
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build and run",
+            "type": "shell",
+            "command": "./playdate.sh ${workspaceFolder}/lesson02_tesserae",
+            "windows": {
+                "command": "./playdate.cmd"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        }
+    ]
+}

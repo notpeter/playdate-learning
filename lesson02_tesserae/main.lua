@@ -5,6 +5,10 @@ import "CoreLibs/sprites"
 import "CoreLibs/timer"
 import "CoreLibs/crank"
 
+-- Global constants
+local screenX <const> = 400
+local screenY <const> = 240
+
 -- Import Aliases (More performant and shorter)
 local gfx <const> = playdate.graphics
 local bjp <const> = playdate.buttonJustPressed
@@ -19,7 +23,7 @@ local frameSprite = nil         -- playdate.graphics.sprite
 local selectedSprite = nil      -- playdate.graphics.sprite
 local movingSprite = nil        -- playdate.graphics.sprite
 local animatedTileSprite = nil  -- playdate.graphics.sprite
-local undoBuffer = {}
+local undoBuffer = {}           -- table {src, mid, }
 local redoBuffer = {}           -- table {src}
 
 local game = {} -- table of ints ()
@@ -32,7 +36,7 @@ local blinkTimer = nil
 -- Random constants
 local boards = {
     [0] = {x=6, y=3, size=32, xshift=104, yshift=72},
-    [1] = {x=10, y=7, size=32, xshift=34, yshift=4},
+    [1] = {x=10, y=7, size=32, xshift=0, yshift=4},
     [2] = {x=14, y=10, size=24, xshift=32, yshift=0},
 }
 local board = boards[1]
@@ -48,8 +52,14 @@ local boardXShift = board.xshift
 local boardYShift = board.yshift
 local tileSize = board.size
 
-local screenX <const> = 400
-local screenY <const> = 240
+local function draw_grid(rows, columns, size)
+    for row = 0,rows do
+        playdate.graphics.drawLine(0, size * row, screenX, size * row)
+    end
+    for col = 0, columns*size, size+1 do
+        playdate.graphics.drawLine(col, 0, col, screenY)
+    end
+end
 
 local Tiles = {
     "EMPTY",
@@ -137,7 +147,7 @@ local function _mid_pos(src_pos, dest_pos)
 end
 
 local function _valid_moves(position)
-    moves = {}
+    local moves = {}
     local x, y = pos2(position)
     local ok_right = x + 2 <= boardX
     local ok_left = x - 2 >= 1
@@ -168,9 +178,9 @@ local function _valid_moves(position)
         table.insert(moves, position + 2 * boardX + 2)
     end
     local valids = {}
-    local new_dest = null
-    local new_mid = null
-    local mid_pos = null
+    local new_dest = nil
+    local new_mid = nil
+    local mid_pos = nil
     local valid = false
     for _, dest_pos in pairs(moves) do
         mid_pos = _mid_pos(position, dest_pos)
@@ -250,15 +260,15 @@ local function myGameSetUp()
     selectedSprite:add()
 
     -- Background image.
-    local backgroundImage = playdate.graphics.image.new( "images/400x240-10x7.png" )
-    assert( backgroundImage, "image load failure")
-    playdate.graphics.sprite.setBackgroundDrawingCallback(
-        function( x, y, width, height )
-            playdate.graphics.setClipRect( x, y, width, height )
-            backgroundImage:draw( 0, 0 )
-            playdate.graphics.clearClipRect()
-        end
-    )
+    -- local backgroundImage = playdate.graphics.image.new( "images/400x240-10x7.png" )
+    -- assert( backgroundImage, "image load failure")
+    -- playdate.graphics.sprite.setBackgroundDrawingCallback(
+    --     function( x, y, width, height )
+    --         playdate.graphics.setClipRect( x, y, width, height )
+    --         backgroundImage:draw( 0, 0 )
+    --         playdate.graphics.clearClipRect()
+    --     end
+    -- )
 end
 
 local function b2i(value) -- converts boolean to int
@@ -381,7 +391,7 @@ local function handleInput()
 
     -- This is a terrible, but simple crank interface.
     if not playdate.isCrankDocked() then
-        cranks = playdate.getCrankTicks(6)
+        local cranks = playdate.getCrankTicks(6)
         if cranks > 0 then
             undo()
         elseif cranks < 0 then
@@ -420,7 +430,7 @@ local function handleInput()
                 local src_pos = selectedPos
                 local mid_pos = _mid_pos(selectedPos, framePos)
                 local dest_pos = framePos
-                valid, new_mid, new_dest = move(game[src_pos], game[mid_pos], game[dest_pos])
+                local valid, new_mid, new_dest = move(game[src_pos], game[mid_pos], game[dest_pos])
                 print(src_pos, mid_pos, dest_pos)
                 print(valid, new_mid, new_dest)
                 if valid then
@@ -432,19 +442,15 @@ local function handleInput()
                 sprite:setVisible(false)
             end
             blinkTimer:remove()
-            blinkingSprites = {}
             validMoves = {}
-            -- RESEARCH: Performance/GC; is re-using tables faster?
-            -- for i = #blinkingSprites, 1, -1 do
-            --     blinkingSprites[i]:setVisible(false)
-            --     table.remove(blinkingSprites, i)
-            -- end
         end
     end
 end
 
-function freedraw()
-    playdate.graphics.drawTextAligned(#undoBuffer, screenX - 20, 0)
+local function freedraw()
+    playdate.graphics.drawTextAligned("Moves", screenX - 20, 100)
+    playdate.graphics.drawTextAligned(#undoBuffer, screenX - 20, 200)
+    draw_grid(7,7, 32)
 end
 
 function playdate.update()
