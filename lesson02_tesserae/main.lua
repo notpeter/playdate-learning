@@ -27,6 +27,8 @@ local undoBuffer = {}           -- table {src, mid, }
 local redoBuffer = {}           -- table {src}
 
 local game = {} -- table of ints ()
+local game_start = 0
+local remaining = nil
 local framePos = 1
 local selectedPos = nil
 local validMoves = {}
@@ -36,7 +38,7 @@ local blinkTimer = nil
 -- Random constants
 local boards = {
     [0] = {x=6, y=3, size=32, xshift=104, yshift=72},
-    [1] = {x=10, y=7, size=32, xshift=0, yshift=4},
+    [1] = {x=10, y=7, size=32, xshift=0, yshift=0},
     [2] = {x=14, y=10, size=24, xshift=32, yshift=0},
 }
 local board = boards[1]
@@ -52,12 +54,15 @@ local boardXShift = board.xshift
 local boardYShift = board.yshift
 local tileSize = board.size
 
-local function draw_grid(rows, columns, size)
-    for row = 0,rows do
-        playdate.graphics.drawLine(0, size * row, screenX, size * row)
+local function draw_grid(rows, cols, size)
+    rows, cols, size = 10, 7, 32
+    for row = 0, rows do
+        local x = row * (size + 1)
+        playdate.graphics.drawLine(x, 0, x, cols * (size + 1))
     end
-    for col = 0, columns*size, size+1 do
-        playdate.graphics.drawLine(col, 0, col, screenY)
+    for col = 0, cols do
+        local y = col * (size + 1)
+        playdate.graphics.drawLine(0, y, rows * (size + 1), y)
     end
 end
 
@@ -241,35 +246,6 @@ local function setupBlinks(primary_image, secondary_image)
     return blink_sprites
 end
 
-local function myGameSetUp()
-    math.randomseed(playdate.getSecondsSinceEpoch())
-
-    -- Init our globals
-    images = setupImages(tileSize)
-    tileSprites = setupTiles(images, difficulty.easy)
-    blinkSpritePool = setupBlinks(images.dot, images.box)
-    blinkSprites = {}
-    framePos = 1
-
-    frameSprite = playdate.graphics.sprite.new( images.frame )
-    frameSprite:moveTo( tilePos(pos2(framePos)) )
-    frameSprite:add()
-
-    selectedSprite = playdate.graphics.sprite.new( images.frame_selected )
-    selectedSprite:setVisible(false)
-    selectedSprite:add()
-
-    -- Background image.
-    -- local backgroundImage = playdate.graphics.image.new( "images/400x240-10x7.png" )
-    -- assert( backgroundImage, "image load failure")
-    -- playdate.graphics.sprite.setBackgroundDrawingCallback(
-    --     function( x, y, width, height )
-    --         playdate.graphics.setClipRect( x, y, width, height )
-    --         backgroundImage:draw( 0, 0 )
-    --         playdate.graphics.clearClipRect()
-    --     end
-    -- )
-end
 
 local function b2i(value) -- converts boolean to int
     return value == true and 1 or 0
@@ -325,6 +301,19 @@ local function _show_moves(position, valid_moves, blinking_sprite_pool)
     return blinks
 end
 
+local function calcRemaining(game)
+    local function tileCnt(tile)
+        local cntr = {[0]=0, [1]=1, [2]=1, [3]=2, [4]=1, [5]=2, [6]=2, [7]=3}
+        return cntr[tile] or 0
+    end
+    local tile_count = 0
+    for _, tile in pairs(game) do
+        tile_count = tile_count + tileCnt(tile)
+    end
+    return tile_count
+end
+
+
 local function undo()
     if #undoBuffer >= 1 then
         local moo = table.remove(undoBuffer)
@@ -335,6 +324,7 @@ local function undo()
         game[moo.src_pos] = moo.src
         game[moo.mid_pos] = moo.mid
         game[moo.dest_pos] = moo.dest
+        remaining = calcRemaining(game)
         tileSprites[moo.src_pos]:setImage(images[moo.src])
         tileSprites[moo.mid_pos]:setImage(images[moo.mid])
         tileSprites[moo.dest_pos]:setImage(images[moo.dest])
@@ -352,6 +342,7 @@ local function redo()
         game[moo.src_pos] = moo.src
         game[moo.mid_pos] = moo.mid
         game[moo.dest_pos] = moo.dest
+        remaining = calcRemaining(game)
         tileSprites[moo.src_pos]:setImage(images[moo.src])
         tileSprites[moo.mid_pos]:setImage(images[moo.mid])
         tileSprites[moo.dest_pos]:setImage(images[moo.dest])
@@ -361,7 +352,7 @@ local function redo()
 end
 
 local function tileMove(src_pos, mid_pos, dest_pos)
-    print("move", src_pos, mid_pos, dest_pos, game[src_pos], game[mid_pos], game[dest_pos])
+    -- print("move", src_pos, mid_pos, dest_pos, game[src_pos], game[mid_pos], game[dest_pos])
     local valid, new_mid, new_dest = move(game[src_pos], game[mid_pos], game[dest_pos])
     assert ( valid, "invalid tile move" )
 
@@ -370,10 +361,10 @@ local function tileMove(src_pos, mid_pos, dest_pos)
         src=game[src_pos], mid=game[mid_pos], dest=game[dest_pos]
     })
     redoBuffer = {}
-
     game[src_pos] = 0
     game[mid_pos] = new_mid
     game[dest_pos] = new_dest
+    remaining = calcRemaining(game)
     tileSprites[src_pos]:setImage(images[0])
     tileSprites[mid_pos]:setImage(images[new_mid])
     tileSprites[dest_pos]:setImage(images[new_dest])
@@ -448,9 +439,19 @@ local function handleInput()
 end
 
 local function freedraw()
-    playdate.graphics.drawTextAligned("Moves", screenX - 20, 100)
-    playdate.graphics.drawTextAligned(#undoBuffer, screenX - 20, 200)
-    draw_grid(7,7, 32)
+    playdate.graphics.drawText("Moves", screenX - 50, 10)
+    playdate.graphics.drawTextAligned("*" .. #undoBuffer .. "*", screenX - 25, 30, kTextAlignment.center )
+
+    local elapsed = playdate.getSecondsSinceEpoch() - game_start
+    playdate.graphics.drawText("Timer", screenX - 50, 60)
+    local elapsed_str = "*" .. string.format("%02d", elapsed // 60) .. ":" .. string.format("%02d", elapsed % 60) .. "*"
+    -- local elapsed_str = string.format("%02d", elapsed // 60) .. ":" .. string.format("%02d", elapsed % 60)
+    playdate.graphics.drawTextAligned(elapsed_str, screenX - 50, 80, kTextAlignment.left )
+
+    playdate.graphics.drawTextAligned("Left", screenX - 50, 120,  kTextAlignment.left )
+    playdate.graphics.drawTextAligned(string.format("*%s*", remaining), screenX - 25, 140, kTextAlignment.center )
+
+    draw_grid(7, 7, 32)
 end
 
 function playdate.update()
@@ -458,6 +459,40 @@ function playdate.update()
     playdate.timer.updateTimers()
     handleInput()
     freedraw()
+end
+
+local function myGameSetUp()
+    math.randomseed(playdate.getSecondsSinceEpoch())
+
+
+    -- Init our globals
+    images = setupImages(tileSize)
+    tileSprites = setupTiles(images, difficulty.easy)
+    blinkSpritePool = setupBlinks(images.dot, images.box)
+    blinkSprites = {}
+    framePos = 1
+
+    frameSprite = playdate.graphics.sprite.new( images.frame )
+    frameSprite:moveTo( tilePos(pos2(framePos)) )
+    frameSprite:add()
+
+    selectedSprite = playdate.graphics.sprite.new( images.frame_selected )
+    selectedSprite:setVisible(false)
+    selectedSprite:add()
+
+    -- Initializes game state variables
+    game_start = playdate.getSecondsSinceEpoch()
+    remaining = calcRemaining(game)
+    -- Background image.
+    -- local backgroundImage = playdate.graphics.image.new( "images/400x240-10x7.png" )
+    -- assert( backgroundImage, "image load failure")
+    -- playdate.graphics.sprite.setBackgroundDrawingCallback(
+    --     function( x, y, width, height )
+    --         playdate.graphics.setClipRect( x, y, width, height )
+    --         backgroundImage:draw( 0, 0 )
+    --         playdate.graphics.clearClipRect()
+    --     end
+    -- )
 end
 
 myGameSetUp()
