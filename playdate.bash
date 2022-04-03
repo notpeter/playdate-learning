@@ -12,4 +12,4 @@ MAINLUA="${1}"
 OUTPDX="${2-$WHATEVER}"
 
 "$PLAYDATE_SDK_PATH/bin/pdc" $MAINLUA $OUTPDX
-"$PLAYDATE_SDK_PATH/bin/Playdate Simulator.app" $OUTPDX
+open "$PLAYDATE_SDK_PATH/bin/Playdate Simulator.app" $OUTPDX
