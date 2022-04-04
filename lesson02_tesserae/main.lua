@@ -4,6 +4,7 @@ import "CoreLibs/graphics"
 import "CoreLibs/sprites"
 import "CoreLibs/timer"
 import "CoreLibs/crank"
+import "draw"
 
 -- Global constants
 local screenX <const> = 400
@@ -38,18 +39,6 @@ local validMoves = {}
 
 local blinkTimer = nil
 
-
-local function draw_grid(rows, cols, size)
-    -- rows, cols, size = 10, 7, 32
-    for row = 0, rows do
-        local x = row * (size + 1)
-        playdate.graphics.drawLine(x, 0, x, cols * (size + 1))
-    end
-    for col = 0, cols do
-        local y = col * (size + 1)
-        playdate.graphics.drawLine(0, y, rows * (size + 1), y)
-    end
-end
 
 local Tiles = {
     "EMPTY",
@@ -154,28 +143,28 @@ local function _valid_moves(game, position, pos2)
     local ok_up = y - 2 >= 1
     local ok_down = y + 2 <= boardY
     if ok_right then
-        table.insert(moves, position + 2)
+        moves[#moves+1] = position + 2
     end
     if ok_left then
-        table.insert(moves, position - 2)
+        moves[#moves+1] = position - 2
     end
     if ok_down then
-        table.insert(moves, position + 2 * boardX)
+        moves[#moves+1] = position + 2 * boardX
     end
     if ok_up then
-        table.insert(moves, position - 2 * boardX)
+        moves[#moves+1] = position - 2 * boardX
     end
     if ok_up and ok_left then
-        table.insert(moves, position - 2 * boardX - 2)
+        moves[#moves+1] = position - 2 * boardX - 2
     end
     if ok_up and ok_right then
-        table.insert(moves, position - 2 * boardX + 2)
+        moves[#moves+1] = position - 2 * boardX + 2
     end
     if ok_down and ok_left then
-        table.insert(moves, position + 2 * boardX - 2)
+        moves[#moves+1] = position + 2 * boardX - 2
     end
     if ok_down and ok_right then
-        table.insert(moves, position + 2 * boardX + 2)
+        moves[#moves+1] = position + 2 * boardX + 2
     end
     local valids = {}
     local new_dest = nil
@@ -289,7 +278,7 @@ local function _show_moves(position, valid_moves, blinking_sprite_pool)
         local sprite = blinking_sprite_pool[dot_or_box][num_moves]
         sprite:moveTo( tile_pos2(dest_pos) )
         sprite:setVisible(true)
-        table.insert(blinks, sprite)
+        blinks[#blinks+1] = sprite
     end
     return blinks
 end
@@ -310,10 +299,10 @@ end
 local function undo()
     if #undoBuffer >= 1 then
         local moo = table.remove(undoBuffer)
-        table.insert(redoBuffer, {
+        redoBuffer[#redoBuffer+1] = {
             src_pos=moo.src_pos, mid_pos=moo.mid_pos, dest_pos=moo.dest_pos,
             src=game[moo.src_pos], mid=game[moo.mid_pos], dest=game[moo.dest_pos]
-        })
+        }
         game[moo.src_pos] = moo.src
         game[moo.mid_pos] = moo.mid
         game[moo.dest_pos] = moo.dest
@@ -328,10 +317,10 @@ end
 local function redo()
     if #redoBuffer >= 1 then
         local moo = table.remove(redoBuffer)
-        table.insert(undoBuffer, {
+        undoBuffer[#undoBuffer+1] = {
             src_pos=moo.src_pos, mid_pos=moo.mid_pos, dest_pos=moo.dest_pos,
             src=game[moo.src_pos], mid=game[moo.mid_pos], dest=game[moo.dest_pos]
-        })
+        }
         game[moo.src_pos] = moo.src
         game[moo.mid_pos] = moo.mid
         game[moo.dest_pos] = moo.dest
@@ -349,10 +338,10 @@ local function tileMove(src_pos, mid_pos, dest_pos)
     local valid, new_mid, new_dest = move(game[src_pos], game[mid_pos], game[dest_pos])
     assert ( valid, "invalid tile move" )
 
-    table.insert(undoBuffer, {
+    undoBuffer[#undoBuffer+1] = {
         src_pos=src_pos, mid_pos=mid_pos, dest_pos=dest_pos,
         src=game[src_pos], mid=game[mid_pos], dest=game[dest_pos]
-    })
+    }
     redoBuffer = {}
     game[src_pos] = 0
     game[mid_pos] = new_mid
