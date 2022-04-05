@@ -4,498 +4,67 @@ import "CoreLibs/graphics"
 import "CoreLibs/sprites"
 import "CoreLibs/timer"
 import "CoreLibs/crank"
-import "draw"
-
--- Global constants
-local screenX <const> = 400
-local screenY <const> = 240
+import "tess_game"
 
 -- Import Aliases (More performant and shorter)
 local gfx <const> = playdate.graphics
 local bjp <const> = playdate.buttonJustPressed
 local bip <const> = playdate.buttonIsPressed
 
--- Global state
-local images = {}               -- table of playdate.graphics.images
-local tileSprites = {}          -- table of playdate.graphics.sprite
-local blinkSpritePool = {}      -- table of playdate.graphics.sprite
-local blinkSprites = {}         -- table of playdate.graphics.sprite
-local frameSprite = nil         -- playdate.graphics.sprite
-local selectedSprite = nil      -- playdate.graphics.sprite
-local movingSprite = nil        -- playdate.graphics.sprite
-local animatedTileSprite = nil  -- playdate.graphics.sprite
-local undoBuffer = {}           -- table {src, mid, }
-local redoBuffer = {}           -- table {src}
-
-local game = {} -- table of ints ()
-local gameopt = {}
-local game_pos2 = nil -- function(position) -> (x, y) board position
-local tile_pos2 = nil -- function(position) -> (x, y) screen position
-local game_start = 0
-local remaining = nil
-local framePos = 1
-local selectedPos = nil
-local validMoves = {}
-
-local blinkTimer = nil
-
-
-local Tiles = {
-    "EMPTY",
-    "CIRCLE",           --  ( )  circle
-    "CROSS",            --   +   cross
-    "CROSS_CIRCLE",     --  (+)  cross in circle
-    "SQUARE",           -- [   ] square
-    "CIRCLE_SQUARE",    -- [( )] circle in square
-    "CROSS_SQUARE",     -- [ + ] cross in square
-    "TERTIARY",         -- [(+)]
-}
-
-local function tile2str(tile)
-    local k =  {
-        [0]="     ",
-        [1]="(   )",
-        [2]="  +  ",
-        [3]="( + )",
-        [4]=" [ ] ",
-        [5]="([ ])",
-        [6]=" [+] ",
-        [7]="([+])"
-    }
-    return k[tile]
-end
-
-local function dump(o)
-    if type(o) == 'table' then
-        local s = '{ '
-        for k,v in pairs(o) do
-                if type(k) ~= 'number' then k = '"'..k..'"' end
-                s = s .. '['..k..']=' .. dump(v) .. ', '
-        end
-        return s .. '} '
-    else
-        return tostring(o)
-    end
-end
-
-local function _isPrimary(tile); return tile == 1 or tile == 2 or tile == 4; end
-local function _isSecondary(tile); return tile == 3 or tile == 5 or tile == 6; end
-local function _isTertiary(tile); return tile == 7; end
-local function _hasCircle(tile); return tile & 1 > 0; end
-local function _hasCross(tile); return tile & 2 > 0; end
-local function _hasSquare(tile); return tile & 4 > 0; end
-
-local function _contains(tile1, tile2)
-    -- true when tile1 contains 2
-    return (tile1 & tile2 == tile2)
-end
-
-local function move(src, mid, dest)
-    -- Note these are not positions, they are tile ints
-    -- returns (valid:bool, new_mid:int, new_dest:int)
-    -- Check if dest tile is suitable
-    if dest == 0 or src == dest or (src | dest == src + dest) then
-        -- Check whether mid tile is suitable.
-        if _isPrimary(src) and _isPrimary(mid) then
-            return true, 0, src | dest
-        elseif _contains(mid, src) then
-            return true, mid - src, src | dest
-        end
-    end
-    return false, nil, nil
-end
-
-local function tilepos_gen(xshift, yshift, size, pos2)
-    print("tilepos_gen", xshift, yshift, size, pos2)
-    local function tile_pos(position)
-        local x, y = pos2(position)
-        -- Takes x,y board coordinates; returns xy screen coordinates (sprite location)
-        return xshift + -size // 2 + (size + 1) * x, yshift -size // 2 + (size + 1) * y
-    end
-    return tile_pos
-end
-
-local function pos2_gen(boardX)
-    print("pos2_gen", boardX)
-    local function pos2(position)
-        -- Takes int position and returns x,y board coordinates.
-        local posX = (position - 1) % boardX + 1
-        local posY = (position - 1) // boardX + 1
-        return posX, posY
-    end
-    return pos2
-end
-
-local function _mid_pos(src_pos, dest_pos, pos2)
-    -- returns the midpoint between two tiles (does no validation)
-    local x1, y1 = pos2(src_pos)
-    local x2, y2 = pos2(dest_pos)
-    local mid_pos = gameopt.x * (((y1 + y2) // 2) - 1) + ((x1 + x2) // 2)
-    return mid_pos
-end
-
-local function _valid_moves(game, position, pos2)
-    local boardX, boardY = gameopt.x, gameopt.y
-    local moves = {}
-    local x, y = pos2(position)
-    local ok_right = x + 2 <= boardX
-    local ok_left = x - 2 >= 1
-    local ok_up = y - 2 >= 1
-    local ok_down = y + 2 <= boardY
-    if ok_right then
-        moves[#moves+1] = position + 2
-    end
-    if ok_left then
-        moves[#moves+1] = position - 2
-    end
-    if ok_down then
-        moves[#moves+1] = position + 2 * boardX
-    end
-    if ok_up then
-        moves[#moves+1] = position - 2 * boardX
-    end
-    if ok_up and ok_left then
-        moves[#moves+1] = position - 2 * boardX - 2
-    end
-    if ok_up and ok_right then
-        moves[#moves+1] = position - 2 * boardX + 2
-    end
-    if ok_down and ok_left then
-        moves[#moves+1] = position + 2 * boardX - 2
-    end
-    if ok_down and ok_right then
-        moves[#moves+1] = position + 2 * boardX + 2
-    end
-    local valids = {}
-    local new_dest = nil
-    local new_mid = nil
-    local mid_pos = nil
-    local valid = false
-    for _, dest_pos in pairs(moves) do
-        mid_pos = _mid_pos(position, dest_pos, pos2)
-        valid, new_mid, new_dest = move(game[position], game[mid_pos], game[dest_pos])
-        if valid then
-            valids[dest_pos] = new_dest
-        end
-    end
-    return valids
-end
-
-local function setupTiles(images, game, game_pos, tile_pos)  --> table[playdate.graphics.sprite]
-    local sprite = nil --> playdate.graphics.sprite
-    local tile_sprites = {} --> table[playdate.graphics.sprite]
-    for p = 1, #game do
-        local x, y = tile_pos(p) -- Sprite coordinates
-        sprite = playdate.graphics.sprite.new( images[game[p]] )
-        sprite:moveTo(x, y)
-        sprite:add()
-        tile_sprites[p] = sprite
-    end
-    return tile_sprites
-end
-
-local function setupImages(tile_size)
-    local _images = {}
-    local filename = ""
-    local folder_fmt = "images/%sx%s/%s"
-    for key, val in pairs({
-        [0]="0.png", [1]="1.png", [2]="2.png", [3]="3.png",
-        [4]="4.png", [5]="5.png", [6]="6.png", [7]="7.png",
-        frame="frame.png",
-        frame_selected="selected.png",
-        dot="dot.png",
-        box="box.png",
-    }) do
-        filename = string.format(folder_fmt, tile_size, tile_size, val)
-        _images[key] = playdate.graphics.image.new( filename )
-        assert( _images[key], "image load failure: " .. filename)
-    end
-    return _images
-end
-
-local function setupBlinks(primary_image, secondary_image)
-    local sprite = nil
-    local blink_sprites = {[1]={}, [2]={}}  -- a table containing two tables
-    for i, image in pairs({[1]=primary_image, [2]=secondary_image}) do
-        for j=1,8 do
-            sprite = playdate.graphics.sprite.new( image )
-            sprite:setVisible(false)
-            sprite:add()
-            blink_sprites[i][j] = sprite
-        end
-    end
-    return blink_sprites
-end
-
-
-local function b2i(value) -- converts boolean to int
-    return value == true and 1 or 0
-end
-
-local function handleInputMoveFrame(frame_pos, frame_sprite)
-    local fx, fy = game_pos2(frame_pos) -- frame x,y board coordinates
-    local boardX, boardY = gameopt.x, gameopt.y
-    local new_pos = nil
-    -- TODO: Convert this to buttonIsPressed with delay + repeat
-    -- d-pad control. b2i terms apply screen wrap if required.
-    if bjp("right") then
-        new_pos = frame_pos + 1 + (b2i(fx == boardX) * -boardX)
-    elseif bjp("left") then
-        new_pos = frame_pos - 1 + (b2i(fx == 1) * boardX)
-    elseif bjp("up") then
-        new_pos = frame_pos - boardX + (b2i(fy == 1) * boardX * boardY)
-    elseif bjp("down") then
-        new_pos = frame_pos + boardX - (b2i(fy == boardY) * boardX * boardY)
-    else
-        return frame_pos
-    end
-    frame_sprite:moveTo( tile_pos2(new_pos) )
-    return new_pos
-end
-
--- function moveFrame(horizontal, vertical)
---     local fx, fy = pos2(frame_pos)
---     local mx = frame_pos + horizontal * b2i(horizontal > 0) * b2i(fx == 1) * boardX
--- end
---
--- function directionalHandler()
---     local horizontal = b2i(bip("right")) - b2i(bip("left"))
---     local vertical = b2i(bip("down")) - b2i(bip("up"))
--- end
-
-local function blinkCallback()
-    for _, spr in pairs(blinkSprites) do
-        spr:setVisible(not(spr:isVisible()))
-    end
-end
-
-local function _show_moves(position, valid_moves, blinking_sprite_pool)
-    local blinks = {}
-    local num_moves = 0
-    for dest_pos, new_dest in pairs(valid_moves) do
-        num_moves = num_moves + 1
-        local dot_or_box = 1 + b2i(_isSecondary(new_dest) or _isTertiary(new_dest))
-        local sprite = blinking_sprite_pool[dot_or_box][num_moves]
-        sprite:moveTo( tile_pos2(dest_pos) )
-        sprite:setVisible(true)
-        blinks[#blinks+1] = sprite
-    end
-    return blinks
-end
-
-local function calcRemaining(game)
-    local function tileCnt(tile)
-        local cntr = {[0]=0, [1]=1, [2]=1, [3]=2, [4]=1, [5]=2, [6]=2, [7]=3}
-        return cntr[tile] or 0
-    end
-    local tile_count = 0
-    for _, tile in pairs(game) do
-        tile_count = tile_count + tileCnt(tile)
-    end
-    return tile_count
-end
-
-
-local function undo()
-    if #undoBuffer >= 1 then
-        local moo = table.remove(undoBuffer)
-        redoBuffer[#redoBuffer+1] = {
-            src_pos=moo.src_pos, mid_pos=moo.mid_pos, dest_pos=moo.dest_pos,
-            src=game[moo.src_pos], mid=game[moo.mid_pos], dest=game[moo.dest_pos]
-        }
-        game[moo.src_pos] = moo.src
-        game[moo.mid_pos] = moo.mid
-        game[moo.dest_pos] = moo.dest
-        remaining = calcRemaining(game)
-        tileSprites[moo.src_pos]:setImage(images[moo.src])
-        tileSprites[moo.mid_pos]:setImage(images[moo.mid])
-        tileSprites[moo.dest_pos]:setImage(images[moo.dest])
-        framePos = moo.src_pos
-        frameSprite:moveTo( tile_pos2(framePos) )
-    end
-end
-local function redo()
-    if #redoBuffer >= 1 then
-        local moo = table.remove(redoBuffer)
-        undoBuffer[#undoBuffer+1] = {
-            src_pos=moo.src_pos, mid_pos=moo.mid_pos, dest_pos=moo.dest_pos,
-            src=game[moo.src_pos], mid=game[moo.mid_pos], dest=game[moo.dest_pos]
-        }
-        game[moo.src_pos] = moo.src
-        game[moo.mid_pos] = moo.mid
-        game[moo.dest_pos] = moo.dest
-        remaining = calcRemaining(game)
-        tileSprites[moo.src_pos]:setImage(images[moo.src])
-        tileSprites[moo.mid_pos]:setImage(images[moo.mid])
-        tileSprites[moo.dest_pos]:setImage(images[moo.dest])
-        framePos = moo.dest_pos
-        frameSprite:moveTo( tile_pos2(framePos) )
-    end
-end
-
-local function tileMove(src_pos, mid_pos, dest_pos)
-    -- print("move", src_pos, mid_pos, dest_pos, game[src_pos], game[mid_pos], game[dest_pos])
-    local valid, new_mid, new_dest = move(game[src_pos], game[mid_pos], game[dest_pos])
-    assert ( valid, "invalid tile move" )
-
-    undoBuffer[#undoBuffer+1] = {
-        src_pos=src_pos, mid_pos=mid_pos, dest_pos=dest_pos,
-        src=game[src_pos], mid=game[mid_pos], dest=game[dest_pos]
-    }
-    redoBuffer = {}
-    game[src_pos] = 0
-    game[mid_pos] = new_mid
-    game[dest_pos] = new_dest
-    remaining = calcRemaining(game)
-    tileSprites[src_pos]:setImage(images[0])
-    tileSprites[mid_pos]:setImage(images[new_mid])
-    tileSprites[dest_pos]:setImage(images[new_dest])
-end
-
-
-local function tileAnimationFactory(src_pos, mid_pos, dest_pos)
-    -- animatedTileSprite
-    local function tileAnimaitonCallback()
-    end
-end
+-- Globals
+local game = nil -- Game
 
 local function handleInput()
-    -- directionalHandler()
-
     -- This is a terrible, but simple crank interface.
     if not playdate.isCrankDocked() then
         local cranks = playdate.getCrankTicks(6)
         if cranks > 0 then
-            undo()
+            game:undo()
         elseif cranks < 0 then
-            redo()
+            game:redo()
         end
     end
 
+    -- Undo/redo buffer
     if bip("b") then
         if bjp("left") then
-            undo()
+            game:undo()
         elseif bjp("right") then
-            redo()
+            game:redo()
         end
+    -- Frame movement
     else
-        framePos = handleInputMoveFrame(framePos, frameSprite)
+        if bjp("right") then
+            game:frame_move("right")
+        elseif bjp("left") then
+            game:frame_move("left")
+        elseif bjp("up") then
+            game:frame_move("up")
+        elseif bjp("down") then
+            game:frame_move("down")
+        end
     end
 
     -- ButtonA / Frame selection
     if playdate.buttonJustReleased( "a" ) then
-        if selectedPos == nil and game[framePos] > 0 then
-            -- Select
-            selectedPos = framePos
-            selectedSprite:moveTo( tile_pos2(selectedPos) )
-            selectedSprite:setVisible(true)
-            validMoves = _valid_moves(game, selectedPos, game_pos2)
-            blinkSprites = _show_moves(framePos, validMoves, blinkSpritePool)
-            blinkTimer = playdate.timer.keyRepeatTimerWithDelay(300, 500, blinkCallback)
-        else
-            selectedSprite:setVisible(false)
-            print(framePos, dump(validMoves), validMoves[framePos] == nil)
-            if (selectedPos == framePos) then
-                ;
-            elseif validMoves[framePos] == nil then
-                ;
-            else
-                local src_pos = selectedPos
-                local mid_pos = _mid_pos(selectedPos, framePos, game_pos2)
-                local dest_pos = framePos
-                local valid, new_mid, new_dest = move(game[src_pos], game[mid_pos], game[dest_pos])
-                print(src_pos, mid_pos, dest_pos)
-                print(valid, new_mid, new_dest)
-                if valid then
-                    tileMove(src_pos, mid_pos, dest_pos)
-                end
-            end
-            selectedPos = nil
-            for _, sprite in pairs(blinkSprites) do
-                sprite:setVisible(false)
-            end
-            blinkTimer:remove()
-            validMoves = {}
-        end
+        game:select()
     end
-end
-
-local function freedraw()
-    playdate.graphics.drawText("Moves", screenX - 50, 10)
-    playdate.graphics.drawTextAligned("*" .. #undoBuffer .. "*", screenX - 25, 30, kTextAlignment.center )
-
-    local elapsed = playdate.getSecondsSinceEpoch() - game_start
-    playdate.graphics.drawText("Timer", screenX - 50, 60)
-    local elapsed_str = "*" .. string.format("%02d", elapsed // 60) .. ":" .. string.format("%02d", elapsed % 60) .. "*"
-    -- local elapsed_str = string.format("%02d", elapsed // 60) .. ":" .. string.format("%02d", elapsed % 60)
-    playdate.graphics.drawTextAligned(elapsed_str, screenX - 50, 80, kTextAlignment.left )
-
-    playdate.graphics.drawTextAligned("Left", screenX - 50, 120,  kTextAlignment.left )
-    playdate.graphics.drawTextAligned(string.format("*%s*", remaining), screenX - 25, 140, kTextAlignment.center )
-
-    draw_grid(gameopt.x, gameopt.y, gameopt.size)
 end
 
 function playdate.update()
     playdate.graphics.sprite.update()
     playdate.timer.updateTimers()
     handleInput()
-    freedraw()
+    game:draw_grid()
+    game:draw_scoreboard()
 end
 
-local function myGameSetUp()
+local function game_setup()
     math.randomseed(playdate.getSecondsSinceEpoch())
-
-    -- Random constants
-    local boards = {
-        [0] = {x=6, y=3, size=32, xshift=0, yshift=0},
-        [1] = {x=10, y=7, size=32, xshift=0, yshift=0},
-        [2] = {x=14, y=10, size=24, xshift=32, yshift=0},
-    }
-    -- Init some globals
-    gameopt = boards[0]
-    game_pos2 = pos2_gen(gameopt.x)
-    tile_pos2 = tilepos_gen(gameopt.xshift, gameopt.yshift, gameopt.size, game_pos2)
-
-    local difficulty = {
-        -- TODO: Make less difficult. E.g. medium 2/3 primary; 1/3 secondary not 1/2 & 1/2.
-        easy = function(); return 2 ^ math.random(0,2); end,    -- all primary
-        medium = function(); return math.random(1,6); end,      -- primary & secondary
-        hard = function(); return math.random(1,7); end,        -- primary, secondary & tertiary
-    }
-    -- Board setup
-    for p = 1, gameopt.x * gameopt.y do
-        game[p] = difficulty.easy()
-    end
-
-    -- Sprite setup
-    images = setupImages(gameopt.size)
-    tileSprites = setupTiles(images, game, game_pos2, tile_pos2)
-    blinkSpritePool = setupBlinks(images.dot, images.box)
-    blinkSprites = {}
-    framePos = 1
-
-    frameSprite = playdate.graphics.sprite.new( images.frame )
-    frameSprite:moveTo( tile_pos2(framePos) )
-    frameSprite:add()
-
-    selectedSprite = playdate.graphics.sprite.new( images.frame_selected )
-    selectedSprite:setVisible(false)
-    selectedSprite:add()
-
-    -- Initializes game state variables
-    game_start = playdate.getSecondsSinceEpoch()
-    remaining = calcRemaining(game)
-    -- Background image.
-    -- local backgroundImage = playdate.graphics.image.new( "images/400x240-10x7.png" )
-    -- assert( backgroundImage, "image load failure")
-    -- playdate.graphics.sprite.setBackgroundDrawingCallback(
-    --     function( x, y, width, height )
-    --         playdate.graphics.setClipRect( x, y, width, height )
-    --         backgroundImage:draw( 0, 0 )
-    --         playdate.graphics.clearClipRect()
-    --     end
-    -- )
+    game = Game:create(10, 7, 32, "easy")
+    -- game = Game(6, 3, 32)
+    -- game = Game(14, 10, 24)
+    game:start()
 end
 
-myGameSetUp()
+game_setup()
