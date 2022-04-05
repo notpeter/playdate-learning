@@ -373,7 +373,7 @@ function Game:frame_move(direction)
     -- TODO: Convert this to buttonIsPressed with delay + repeat
     -- d-pad control. b2i terms apply screen wrap if required.
     if direction == "right" then
-        self.frame_pos = self.frame_pos + 1 + (b2i(fx == self.x) * -self.y)
+        self.frame_pos = self.frame_pos + 1 + (b2i(fx == self.x) * -self.x)
     elseif direction == "left" then
         self.frame_pos = self.frame_pos - 1 + (b2i(fx == 1) * self.x)
     elseif direction == "up" then
