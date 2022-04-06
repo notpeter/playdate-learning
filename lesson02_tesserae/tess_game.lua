@@ -18,6 +18,7 @@ local function pos2_gen(boardX)
     end
     return pos2
 end
+
 local function tilepos_gen(xshift, yshift, size, pos2)
     local function tile_pos(position)
         local x, y = pos2(position)
@@ -27,16 +28,41 @@ local function tilepos_gen(xshift, yshift, size, pos2)
     return tile_pos
 end
 
+local difficulty_funcs = {
+    -- TODO: Make less difficult. E.g. medium 2/3 primary; 1/3 secondary not 1/2 & 1/2.
+    easy = function(); return 2 ^ math.random(0,2); end,    -- all primary
+    medium = function(); return math.random(1,6); end,      -- primary & secondary
+    hard = function(); return math.random(1,7); end,        -- primary, secondary & tertiary
+    empty = function(); return 0; end,
+}
+
+function create_images(size) -- -> table[playdate.graphics.image]
+    local _images = {}
+    for key, file in pairs({
+        [0]="0.png", [1]="1.png", [2]="2.png", [3]="3.png",
+        [4]="4.png", [5]="5.png", [6]="6.png", [7]="7.png",
+        frame="frame.png", selected="selected.png", dot="dot.png", box="box.png",
+    }) do
+        local filepath = string.format("images/%sx%s/%s", size, size, file)
+        _images[key] = playdate.graphics.image.new( filepath )
+        assert( _images[key], "image load failure: " .. filepath)
+    end
+    return _images
+end
+
+
 Game = {}
 Game.__index = Game
-function Game:create(x, y, size, difficulty)
+Game.images = create_images(32) -- class variable
+
+function Game:create(x, y, size, difficulty, board, moves_buffer)
     local game = {}             -- our new object
     setmetatable(game, Game)    -- make Game handle lookup
     -- initialize our object
     game.x = x
     game.y = y
-    game.size = size
-    game.difficulty = difficulty
+    game.size = size or 32
+    difficulty = difficulty or "easy"
     game.xshift = 0
     game.yshift = 0
     game.board = {}
@@ -48,22 +74,20 @@ function Game:create(x, y, size, difficulty)
     game.game_pos2 = pos2_gen(game.x)
     game.tile_pos2 = tilepos_gen(game.xshift, game.yshift, game.size, game.game_pos2)
 
-    local diffs = {
-        -- TODO: Make less difficult. E.g. medium 2/3 primary; 1/3 secondary not 1/2 & 1/2.
-        easy = function(); return 2 ^ math.random(0,2); end,    -- all primary
-        medium = function(); return math.random(1,6); end,      -- primary & secondary
-        hard = function(); return math.random(1,7); end,        -- primary, secondary & tertiary
-    }
-    game.tile_gen = diffs[game.difficulty]
-    -- Generate tiles for board
-    for p = 1, game.x * game.y do
-        game.board[p] = game.tile_gen()
+    if board and moves_buffer then
+        for i = 1,#board do
+            game.board[i] = board[i]
+        end
+        for i = 1,#moves_buffer do
+            game.redo_buffer[#self.redo_buffer+1] = moves_buffer[i]
+        end
+    else
+        local tile_gen = difficulty_funcs[difficulty]
+        for t = 1,x*y do
+            print(tile_gen())
+            game.board[t] = tile_gen()
+        end
     end
-
-    game.images = {
-        [0]=nil, [1]=nil, [2]=nil, [3]=nil, [4]=nil, [5]=nil, [6]=nil, [7]=nil,
-        frame=nil, selected=nil, dot=nil, box=nil
-    }
     game.sprites = {tiles = {}, blinks = {}, frame = nil, selected = nil}
     game.frame_pos = 1
     game.selected_pos = nil
@@ -72,21 +96,6 @@ function Game:create(x, y, size, difficulty)
     game.valid_moves = {}
 
     return game
-end
-
-function Game:create_images()
-    for key, file in pairs({
-        [0]="0.png", [1]="1.png", [2]="2.png", [3]="3.png",
-        [4]="4.png", [5]="5.png", [6]="6.png", [7]="7.png",
-        frame="frame.png",
-        selected="selected.png",
-        dot="dot.png",
-        box="box.png",
-    }) do
-        local filepath = string.format("images/%sx%s/%s", self.size, self.size, file)
-        self.images[key] = playdate.graphics.image.new( filepath )
-        assert( self.images[key], "image load failure: " .. filepath)
-    end
 end
 
 function Game:create_sprites()
@@ -198,7 +207,6 @@ function Game:_valid_moves(position)
     end
     local valids = {}
     for _, dest_pos in pairs(moves) do
-        print("mid?", position, dest_pos)
         local mid_pos = self:_mid_pos(position, dest_pos)
         local valid, new_mid, new_dest = self:move_check(position, mid_pos, dest_pos)
         if valid then
@@ -232,7 +240,6 @@ end
 
 function Game:select()
     local function blink_callback()
-        print(self.blinking)
         for _, spr in pairs(self.blinking) do
             spr:setVisible(not(spr:isVisible()))
         end
@@ -313,11 +320,11 @@ function Game:update()
     end
 end
 
+-- TODO: Get rid of this.
 function Game:start()
-    self:create_images()
     self:create_sprites()
+    self.remaining = self:calc_remaining()
     self.start_time = playdate.getSecondsSinceEpoch()
-    self:update()
 end
 
 function Game:undo()
@@ -337,11 +344,13 @@ function Game:undo()
         self.sprites.tiles[moo.src_pos]:setImage(self.images[moo.src])
         self.sprites.tiles[moo.mid_pos]:setImage(self.images[moo.mid])
         self.sprites.tiles[moo.dest_pos]:setImage(self.images[moo.dest])
-        self.sprites.frame:moveTo( self.tile_pos2(framePos) )
+        self.sprites.frame:moveTo( self.tile_pos2(self.frame_pos) )
         self.frame_pos = moo.src_pos
         self.selected_pos = nil
         self:update()
+        return true
     end
+    return false
 end
 
 function Game:redo()
@@ -361,12 +370,15 @@ function Game:redo()
         self.sprites.tiles[moo.src_pos]:setImage(self.images[moo.src])
         self.sprites.tiles[moo.mid_pos]:setImage(self.images[moo.mid])
         self.sprites.tiles[moo.dest_pos]:setImage(self.images[moo.dest])
-        self.sprites.frame:moveTo( tile_pos2(self.framePos) )
+        self.sprites.frame:moveTo( self.tile_pos2(self.frame_pos) )
         self.frame_pos = moo.dest_pos
         self.selected_pos = nil
         self:update()
+        return true
     end
+    return false
 end
+
 
 function Game:frame_move(direction)
     local fx, fy = self.game_pos2(self.frame_pos) -- frame x,y board coordinates
@@ -384,4 +396,75 @@ function Game:frame_move(direction)
         return
     end
     self.sprites.frame:moveTo( self.tile_pos2(self.frame_pos) )
+end
+
+function Game:serialize()
+    local initial, slides = {}, {}
+    -- Capture the end game
+    for pos, tile in pairs(self.board) do
+        if tile then
+            initial[pos] = tile
+        end
+    end
+    -- Apply the undo.
+    for _, step in pairs(self.undo_buffer) do
+        initial[step.src_pos] = step.src
+        initial[step.mid_pos] = step.mid
+        initial[step.dest_pos] = step.dest
+    end
+    -- Reverse the undo
+    for i=#self.undo_buffer, 1, -1 do
+        slides[#slides+1] = self.undo_buffer[i]
+    end
+    local g = {x=self.x, y=self.y, initial=initial, slides=slides}
+    return g
+end
+
+-- function Game:refresh_sprites()
+--     print("r", self.sprites)
+--     print("refresh", json.encode(self.sprites.tiles))
+--     for pos = 1,#self.board do
+--         print("sprite", pos, self.board[pos])
+--
+--         -- self.sprites.tiles[pos]:setVisible(false)
+--         self.sprites.tiles[pos]:setImage(self.images[self.board[pos]])
+--     end
+-- end
+
+function Game.Load(x, y, initial, slides, size) -- -> Game
+    -- Create empty game; copy board/sprites; update sprites; update metadata.
+    print("load", x,y,size,json.encode(initial),json.encode(slides) )
+    local game = Game:create(x, y, size)
+    for t = 1,#initial do
+        game.board[t] = initial[t]
+    end
+    for r = 1,#slides do
+        game.redo_buffer = slides[r]
+    end
+    game:create_sprites()
+    game:start()
+    return game
+end
+
+function Game:retile(difficulty)
+    local tile_gen = difficulty_funcs[difficulty]
+    for t = 1,#self.board do
+        self.board[t] = tile_gen()
+    end
+    -- FIXME:
+    -- self:refresh_sprites()
+end
+
+
+function Game:Write(filename)
+    g = self:serialize()
+    print(json.encodePretty(g))
+    playdate.datastore.write(g, filename)
+end
+
+function Game.Read(filename)
+    -- Does no validation. Expects {x:int,y:int,:int,initial,slides}
+    local g = playdate.datastore.read(filename)
+    print("read:", json.encodePretty(g))
+    return Game.Load(g.x, g.y, g.initial, g.slides, 32)
 end

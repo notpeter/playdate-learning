@@ -61,9 +61,21 @@ end
 
 local function game_setup()
     math.randomseed(playdate.getSecondsSinceEpoch())
-    game = Game:create(10, 7, 32, "easy")
-    -- game = Game(6, 3, 32)
-    -- game = Game(14, 10, 24)
+    menu = playdate.getSystemMenu()
+
+    menu:addMenuItem("retile", function() game:retile("easy") end)
+    local file = "poop"
+    menu:addMenuItem("save", function() game:Write(file) end)
+    menu:addMenuItem("load", function()
+        playdate.graphics.sprite.removeAll()
+        game = game.Read(file)
+    while game:redo() do end
+    end)
+
+
+    -- game = Game:create(10, 7, 32, "easy")
+    game = Game:create(6, 3, 32, "easy")
+    -- game = Game:create(14, 10, 24)
     game:start()
 end
 
