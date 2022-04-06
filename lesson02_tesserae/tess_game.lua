@@ -118,7 +118,7 @@ function Game:show_moves()
     local num_moves = 0
     for dest_pos, new_dest in pairs(self.valid_moves) do
         num_moves = num_moves + 1
-        sprite = self.sprites.blinks[num_moves]
+        local sprite = self.sprites.blinks[num_moves]
         if _isSecondary(new_dest) or _isTertiary(new_dest) then
             sprite:setImage( self.images.box )
         else
