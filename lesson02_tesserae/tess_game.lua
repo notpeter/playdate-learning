@@ -4,9 +4,16 @@ import "CoreLibs/timer"
 
 import "tess_utils"
 
+-- Import Aliases (More performant and shorter)
+local gfx <const> = playdate.graphics
+local bjp <const> = playdate.buttonJustPressed
+local bjr <const> = playdate.buttonJustReleased
+local bip <const> = playdate.buttonIsPressed
+
 -- Global constants
 local screenX <const> = 400
 local screenY <const> = 240
+local directions = {"left", "right", "up", "down"}
 
 -- Function factories
 local function pos2_gen(boardX)
@@ -84,11 +91,12 @@ function Game:create(x, y, size, difficulty, board, moves_buffer)
     else
         local tile_gen = difficulty_funcs[difficulty]
         for t = 1,x*y do
-            print(tile_gen())
             game.board[t] = tile_gen()
         end
     end
     game.sprites = {tiles = {}, blinks = {}, frame = nil, selected = nil}
+    -- Used to create callbacks for repeated holding of d-pad directions.
+    game.key_timers = {left=nil, right=nil, up=nil, down=nil}
     game.frame_pos = 1
     game.selected_pos = nil
     game.blinking = {}
@@ -122,6 +130,65 @@ function Game:create_sprites()
     self.sprites.selected:setVisible(false)
     self.sprites.selected:add()
 end
+
+function Game:handle_input()
+    local function cancel_timers(timers)
+        for i = 1,#timers do
+            if timers[i] then
+                timers[i]:remove()
+                timers[i] = nil
+            end
+        end
+    end
+    timers = self.key_timers
+
+    if not playdate.isCrankDocked() then -- Undo/Redo via crank.
+        local cranks = playdate.getCrankTicks(6)
+        if cranks > 0 then
+            cancel_timers(timers)
+            game:undo()
+        elseif cranks < 0 then
+            cancel_timers(timers)
+            game:redo()
+        end
+    elseif bip("b") then -- Undo/Redo via B+left and B+right
+        self:_deselect()
+        cancel_timers(timers)
+        if bip("a") then
+            ;
+        elseif bjp("left") then
+            self:undo()
+        elseif bjp("right") then
+            self:redo()
+        end
+    elseif bjr("a") then -- Select tile
+        cancel_timers(timers)
+        self:select()
+    elseif not self.selected_pos then -- movement with no
+        for i = 1,4 do
+            local dir = directions[i]
+            if bjp(dir) and not timers[dir] then -- pressed
+                 timers[dir] = playdate.timer.keyRepeatTimer(function() self:frame_move(dir) end)
+            end
+            if bjr(dir) then -- released
+                timers[dir]:remove()
+                timers[dir] = nil
+            end
+        end
+    else
+        for i = 1,4 do
+            if bjr(directions[i]) then
+                if timers[i] then
+                    timers[i]:remove()
+                    timers[i] = nil
+                else
+                    self:frame_move(directions[i])
+                end
+            end
+        end
+    end
+end
+
 
 function Game:show_moves()
     local num_moves = 0
@@ -159,7 +226,6 @@ function _contains(tile1, tile2); return (tile1 & tile2 == tile2); end
 function Game:move_check(src_pos, mid_pos, dest_pos)
     -- returns (valid:bool, new_mid:int, new_dest:int)
     local src, mid, dest = self.board[src_pos], self.board[mid_pos], self.board[dest_pos]
-    print(src_pos, mid_pos, dest_pos, src, mid, dest)
 
     -- First check if dest tile is suitable
     if dest == 0 or src == dest or (src | dest == src + dest) then
@@ -238,21 +304,8 @@ function Game:move(src_pos, mid_pos, dest_pos)
     self:update()
 end
 
-function Game:select()
-    local function blink_callback()
-        for _, spr in pairs(self.blinking) do
-            spr:setVisible(not(spr:isVisible()))
-        end
-    end
-
-    if self.selected_pos == nil and self.board[self.frame_pos] > 0 then -- Select
-        self.selected_pos = self.frame_pos
-        self.sprites.selected:moveTo( self.tile_pos2(self.selected_pos) )
-        self.sprites.selected:setVisible(true)
-        self.valid_moves = self:_valid_moves(self.selected_pos)
-        self:show_moves()
-        self.blink_timer = playdate.timer.keyRepeatTimerWithDelay(300, 500, blink_callback)
-    else -- move or deselect
+function Game:_deselect()
+    if self.selected_pos then
         self.sprites.selected:setVisible(false)
         if self.valid_moves[self.frame_pos] then
             local src_pos, dest_pos = self.selected_pos, self.frame_pos
@@ -269,6 +322,25 @@ function Game:select()
         self.blinking = {}
         self.blink_timer:remove()
         self:update()
+    end
+end
+
+function Game:select()
+    local function blink_callback()
+        for _, spr in pairs(self.blinking) do
+            spr:setVisible(not(spr:isVisible()))
+        end
+    end
+
+    if self.selected_pos == nil and self.board[self.frame_pos] > 0 then -- Select
+        self.selected_pos = self.frame_pos
+        self.sprites.selected:moveTo( self.tile_pos2(self.selected_pos) )
+        self.sprites.selected:setVisible(true)
+        self.valid_moves = self:_valid_moves(self.selected_pos)
+        self:show_moves()
+        self.blink_timer = playdate.timer.keyRepeatTimerWithDelay(300, 500, blink_callback)
+    else -- move or deselect
+        self:_deselect()
     end
 end
 
@@ -344,8 +416,8 @@ function Game:undo()
         self.sprites.tiles[moo.src_pos]:setImage(self.images[moo.src])
         self.sprites.tiles[moo.mid_pos]:setImage(self.images[moo.mid])
         self.sprites.tiles[moo.dest_pos]:setImage(self.images[moo.dest])
-        self.sprites.frame:moveTo( self.tile_pos2(self.frame_pos) )
         self.frame_pos = moo.src_pos
+        self.sprites.frame:moveTo( self.tile_pos2(self.frame_pos) )
         self.selected_pos = nil
         self:update()
         return true
@@ -370,8 +442,8 @@ function Game:redo()
         self.sprites.tiles[moo.src_pos]:setImage(self.images[moo.src])
         self.sprites.tiles[moo.mid_pos]:setImage(self.images[moo.mid])
         self.sprites.tiles[moo.dest_pos]:setImage(self.images[moo.dest])
-        self.sprites.frame:moveTo( self.tile_pos2(self.frame_pos) )
         self.frame_pos = moo.dest_pos
+        self.sprites.frame:moveTo( self.tile_pos2(self.frame_pos) )
         self.selected_pos = nil
         self:update()
         return true
