@@ -13,21 +13,7 @@ local Tiles = {
     "TERTIARY",         -- [(+)]
 }
 
-local function tile2str(tile)
-    local k =  {
-        [0]="     ",
-        [1]="(   )",
-        [2]="  +  ",
-        [3]="( + )",
-        [4]=" [ ] ",
-        [5]="([ ])",
-        [6]=" [+] ",
-        [7]="([+])"
-    }
-    return k[tile]
-end
-
-local function dump(o)
+function dump(o)
     if type(o) == 'table' then
         local s = '{ '
         for k,v in pairs(o) do

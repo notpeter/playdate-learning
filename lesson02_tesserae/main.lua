@@ -5,10 +5,10 @@ import "CoreLibs/sprites"
 import "CoreLibs/timer"
 import "CoreLibs/crank"
 import "tess_game"
+import "tess_utils"
 
 -- Globals
 local game = nil -- Game
-
 
 function playdate.update()
     playdate.graphics.sprite.update()
@@ -36,6 +36,7 @@ local function game_setup()
     -- game = Game:create(6, 3, 32, "easy")
     -- game = Game:create(14, 10, 24)
     game:start()
+    print(game)
 end
 
 game_setup()

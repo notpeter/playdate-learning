@@ -43,7 +43,7 @@ local difficulty_funcs = {
     empty = function(); return 0; end,
 }
 
-function create_images(size) -- -> table[playdate.graphics.image]
+local function create_images(size) -- -> table[playdate.graphics.image]
     local _images = {}
     for key, file in pairs({
         [0]="0.png", [1]="1.png", [2]="2.png", [3]="3.png",
@@ -140,7 +140,7 @@ function Game:handle_input()
             end
         end
     end
-    timers = self.key_timers
+    local timers = self.key_timers
 
     if not playdate.isCrankDocked() then -- Undo/Redo via crank.
         local cranks = playdate.getCrankTicks(6)
@@ -215,13 +215,13 @@ function Game:_mid_pos(src_pos, dest_pos)
 end
 
 -- TODO: Make these local / class methods
-function _isPrimary(tile); return tile == 1 or tile == 2 or tile == 4; end
-function _isSecondary(tile); return tile == 3 or tile == 5 or tile == 6; end
-function _isTertiary(tile); return tile == 7; end
-function _hasCircle(tile); return tile & 1 > 0; end
-function _hasCross(tile); return tile & 2 > 0; end
-function _hasSquare(tile); return tile & 4 > 0; end
-function _contains(tile1, tile2); return (tile1 & tile2 == tile2); end
+local function _isPrimary(tile); return tile == 1 or tile == 2 or tile == 4; end
+local function _isSecondary(tile); return tile == 3 or tile == 5 or tile == 6; end
+local function _isTertiary(tile); return tile == 7; end
+local function _hasCircle(tile); return tile & 1 > 0; end
+local function _hasCross(tile); return tile & 2 > 0; end
+local function _hasSquare(tile); return tile & 4 > 0; end
+local function _contains(tile1, tile2); return (tile1 & tile2 == tile2); end
 
 function Game:move_check(src_pos, mid_pos, dest_pos)
     -- returns (valid:bool, new_mid:int, new_dest:int)
@@ -468,6 +468,42 @@ function Game:frame_move(direction)
         return
     end
     self.sprites.frame:moveTo( self.tile_pos2(self.frame_pos) )
+end
+
+function Game:__tostring()
+    local function tile2str(tile)
+        local k =  {
+            [0]="     ",
+            [1]="(   )",
+            [2]="  +  ",
+            [3]="( + )",
+            [4]=" [ ] ",
+            [5]="([ ])",
+            [6]=" [+] ",
+            [7]="([+])"
+        }
+        return k[tile]
+    end
+    local t = {""}
+    local stripe = {}
+    for i = 1,self.x do
+        stripe[#stripe+1] = "+-----"
+    end
+    stripe = table.concat(stripe, "")
+
+    for i = 1,#self.board do
+        if i % self.x == 1 then
+            t[#t+1] = "\n"
+            t[#t+1] = stripe
+            t[#t+1] = "+\n|"
+        end
+        t[#t+1] = tile2str(self.board[i])
+        t[#t+1] = "|"
+    end
+    t[#t+1] = "\n"
+    t[#t+1] = stripe
+    t[#t+1] = "+"
+    return table.concat(t, "")
 end
 
 function Game:serialize()
